@@ -223,9 +223,11 @@ static const u8 nikon_ni[18] = {'N','i','k','o','n',0,1,3,0,0,'I','I',0x2a,0,8,0
 static const u8 type_size[13] = {0,1,1,2,4,8,1,1,2,4,8,4,8};
 static const u16 skip0[] = {0x00fe,0x0103,0x014a,0x0201,0x0202,0x0214,0x02bc,0x8769,0x8825,0x9003,0x9216};
 static const u16 skipx[] = {0x9000,0x9101,0x9102,0xa000,0xa001,0xa002,0xa003,0xa005,0x927c};
-static const u16 skipm[] = {0x0004,0x0011,0x0016,0x0035,0x003d,0x0044,0x0045,0x0051,0x0058,0x00a2};
+static const u16 skipm[] = {0x0004,0x0011,0x0016,0x0035,0x003d,0x0044,0x0045,0x0051,0x0058,0x008c,0x00a2};
 /* MakerNote 0x0044 of a NEF: the camera's writer 0x406e9b30 gives 1 or 3 only to JPEG kinds, 0 to a NEF. */
 static const u8 jpgc_nef[2] = {0,0};
+/* Nikon Z 8 NEF MakerNote 0x008C: factory ContrastCurve used by Capture One. */
+static const u8 contrast_curve_nef[578] = {'I','0'};
 static const u32 crc_table[256] = {
 #include "crc32_table.inc"
 };
@@ -1388,6 +1390,7 @@ static int build(out_t *w,const u8 *h,u32 hl,const u32 *hlen,u64 m,lay_t *L,u32 
     e=add(t,&n,0x0011,4,1,0); if(!e) return 0; e->slot=P_MNPV;
     add(t,&n,0x003d,3,4,v); add(t,&n,0x0045,3,4,v+8); add(t,&n,0x0051,7,24,m51);
     if(!add(t,&n,0x0058,7,12,v+16)) return 0;
+    if(!add(t,&n,0x008c,7,sizeof(contrast_curve_nef),contrast_curve_nef)) return 0;
     if(emit(w,t,n,mb)!=mb+8) return 0;
     n=0; add(t,&n,0x0103,3,1,v+66); add(t,&n,0x011a,5,1,rat300); add(t,&n,0x011b,5,1,rat300);
     add(t,&n,0x0128,3,1,v+64); e=add(t,&n,0x0201,4,1,0); e->slot=P_PVSTART;

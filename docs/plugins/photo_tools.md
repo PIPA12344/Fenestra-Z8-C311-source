@@ -1,8 +1,8 @@
 # 照片工具
 
-**文件** `photo_tools.wlm`（r10），**入口** 设定菜单 → Z8Mouldes → 照片工具。RAW 预拍由相机原厂拍摄入口操作，插件页显示提示和当前 RAW 格式。
+**文件** `photo_tools.wlm`（r10-c1 正式版），**入口** 设定菜单 → Z8Mouldes → 照片工具。RAW 预拍由相机原厂拍摄入口操作，插件页显示提示和当前 RAW 格式。
 
-配套 Nikon Z 8 C3.11 的 `cold-retry3`。复制到卡根目录的 `FENESTRA/` 后完整冷启动。[下载 photo_tools.wlm](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/download/wlm-2026.11.10-r10/photo_tools.wlm) · [安装和停用](../z8-usage.zh-CN.md#安装插件)
+配套 Nikon Z 8 C3.11 的 `cold-retry3`。复制到卡根目录的 `FENESTRA/` 后完整冷启动。[下载 photo_tools.wlm](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/download/wlm-2026.11.20-r10-c1/photo_tools.wlm) · [安装和停用](../z8-usage.zh-CN.md#安装插件) · [r10-c1 更新记录](../releases/photo-tools-r10-c1-20261120.md)
 
 ## C15/C30 RAW 连拍和预拍
 
@@ -12,7 +12,7 @@
 
 ## 在 r10 开启 C40、C140
 
-下载本页链接的 **r10** 文件，替换卡上的旧 `photo_tools.wlm`。完整冷启动后，打开 **设定菜单 → Fenestra → Activate**，再进入并列的 **Z8Mouldes → 照片工具**。
+下载本页链接的 **r10-c1** 文件，替换卡上的旧 `photo_tools.wlm`。完整冷启动后，打开 **设定菜单 → Fenestra → Activate**，再进入并列的 **Z8Mouldes → 照片工具**。
 
 | 要拍的速度 | 相机的释放模式 | 在「照片工具」里选 |
 | --- | --- | --- |
@@ -33,12 +33,14 @@ r10 关闭了 r10p 的 NVMe/FileService 分段写卡计时，保留基础计数�
 
 ### RAW 解码兼容性
 
-以下是这两个高速 RAW 档位已知的解码情况。
+2026 年 11 月 20 日，用户在 Z 8 C3.11 上安装 r10-c1 后，确认新拍摄的高速 RAW 可在 Capture One 中解码和编辑。具体软件版本未记录。
 
-| 拍摄档位 | 已知无法解码 | 已知可解码 |
+| 拍摄档位 | r10-c1 已验证可解码 | 已知限制 |
 | --- | --- | --- |
-| DX C60 RAW | Capture One | 像素蛋糕 |
-| FX C120 RAW | Adobe Camera Raw（ACR）、Capture One | 像素蛋糕 |
+| DX C60 RAW | Capture One；Adobe 路径此前已验证可解码 | Capture One 修复已由用户实拍确认 |
+| FX C120 RAW | Capture One | Adobe DNG Converter 18.7 仍拒绝原尺寸 NEF |
+
+r10-c1 在机内生成 NEF 时写入原厂格式的 MakerNote `0x008C`。更新后新拍的文件直接带有该字段。旧版生成的 NEF 需要另行补字段或转换，已有文件可继续使用此前可解码的像素蛋糕。
 
 ## 像素位移合并
 

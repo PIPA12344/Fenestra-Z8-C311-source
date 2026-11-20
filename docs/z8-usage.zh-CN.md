@@ -1,6 +1,6 @@
 # Fenestra Z8 C3.11 使用手册
 
-这份手册对应 `wlm-2026.11.10-r10` 的七个 WLM。相机需为 Nikon Z 8，配套底座为 **`cold-retry3`**。可下载 WLM 和预编译差分补丁，底座文件在本地生成。Fenestra 仍处于实验阶段，WonderLantern/Fenestra 已提示潜在变砖风险。[Release 下载](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.10-r10) · [Fenestra 项目说明](https://github.com/WonderLantern/Fenestra)
+这份手册对应 `wlm-2026.11.10-r10` 的七个 WLM，其中照片工具已于 2026 年 11 月 20 日更新为 **r10-c1 正式版**。相机需为 Nikon Z 8，配套底座为 **`cold-retry3`**。可下载 WLM 和预编译差分补丁，底座文件在本地生成。Fenestra 仍处于实验阶段，WonderLantern/Fenestra 已提示潜在变砖风险。[照片工具 r10-c1](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.20-r10-c1) · [七个 WLM 和底座补丁](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.10-r10) · [Fenestra 项目说明](https://github.com/WonderLantern/Fenestra)
 
 ## 准备底座
 
@@ -58,7 +58,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath build/cold-retry3/Z_8_0311.bin
 
 ## 安装插件
 
-1. 从 Release 下载需要的 `.wlm`，用 `SHA256SUMS.txt` 核对文件。七个插件可以任选，多个一起装时使用同一 Release 的文件。[WLM 下载](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.10-r10)
+1. 从 Release 下载需要的 `.wlm`，用对应的 `SHA256SUMS.txt` 核对文件。照片工具选 r10-c1，其余六个插件可使用 11 月 10 日版，插件可以任选组合。[照片工具 r10-c1](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.20-r10-c1) · [其他 WLM 下载](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.10-r10)
 2. 正常关机并等卡访问灯熄灭，再把 WLM 按原名复制到启动卡根目录的 `FENESTRA/`。两个卡槽都有这个目录时，底座优先选 CFexpress/XQD 卡槽 A。只用 SD 时，在卡槽 B 的卡上建目录。
 3. 换好卡后做一次完整冷启动。关机、等访问灯熄灭、断开 USB，再取下电池片刻，装回后开机。普通的快速关开可能恢复原来的内存状态，冷启动才会重新读取卡上的插件。
 4. 在扳手设定菜单打开 **Fenestra**。`Status` 显示 `Ready` 时可按 `Activate`，变成 `Active` 后，从设定菜单并列的 **Z8Mouldes** 打开插件页。希望启动后自动激活时，在 Fenestra 里把 `Auto activate` 设为 `On`。
@@ -109,7 +109,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath build/cold-retry3/Z_8_0311.bin
 
 ## 已知问题
 
-- **高速 RAW 解码。** DX C60 RAW 在 Capture One 中无法解码。FX C120 RAW 在 Adobe Camera Raw（ACR）和 Capture One 中无法解码。像素蛋糕可解码这两个档位的 RAW。[照片工具的兼容性说明](plugins/photo_tools.md#raw-解码兼容性)
+- **高速 RAW 解码。** 照片工具 r10-c1 补齐 NEF 的 MakerNote `0x008C`，用户已实拍确认 Capture One 兼容修复。FX C120 的原尺寸 NEF 仍有 Adobe 解码限制。[照片工具的兼容性说明](plugins/photo_tools.md#raw-解码兼容性)
 - **快速关开机可能卡死。** 如果快速关机再开机后机身卡死，把电源开关拨到 OFF，等存储卡访问灯熄灭后取下电池，片刻后装回，再开机完成冷启动。
 
 ## 常见情况

@@ -53,13 +53,13 @@ python host/package_z8_wlm_plugins.py --components build/local-components --fron
 
 ## 照片工具 r10
 
-准备上节的 NikonFirmwarePatch 工具包及原厂 C3.11 MAIN。先按上节构建基础包 `build/local-plugins/FENESTRA/photo_tools.wlm`，再用 Windows x64 LLVM **19.1.5** 构建 r10。
+准备上节的 NikonFirmwarePatch 工具包及原厂 C3.11 MAIN。先按上节构建基础包 `build/local-plugins/FENESTRA/photo_tools.wlm`，再用 Windows x64 LLVM **19.1.5** 构建当前正式版 r10-c1。
 
 ```powershell
 python -B host/build_photo_tools_r10.py --stock inputs/z8-c311-main.bin --base-wlm build/local-plugins/FENESTRA/photo_tools.wlm --llvm-bin $llvm --output-dir build/local-photo-tools-r10
 ```
 
-产物为 `build/local-photo-tools-r10/photo_tools.wlm`。脚本验证源生成的原生代码与最终 WLM，最终 SHA-256 应为 `1314d7901a76e75c6156434ba27372d3390bb6eb0c11582b4e2ea187f7d69ef2`。使用方法见[照片工具](plugins/photo_tools.md)。
+产物为 `build/local-photo-tools-r10/photo_tools.wlm`。脚本验证源生成的原生代码与最终 WLM，最终 SHA-256 应为 `aaefcb935612b0aff2a175d19aaca4c08265095add3c8c854917fca9d6eb9b0a`。使用方法见[照片工具](plugins/photo_tools.md)。
 
 ## Windows 调试工作台
 

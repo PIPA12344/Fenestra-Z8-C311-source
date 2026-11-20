@@ -1,4 +1,4 @@
-"""Rebuild the Photo Tools r10 WLM from its sources and a baseline bundle."""
+"""Rebuild the Photo Tools r10-c1 WLM from its sources and a baseline bundle."""
 import argparse
 import hashlib
 from pathlib import Path
@@ -19,8 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'modules/photo_tools/r10'
 MODULE = 'photo_tools'
 CAVE, LIMIT = 0x409f0000, 0x409fc000
-R10_SHA256 = '1314d7901a76e75c6156434ba27372d3390bb6eb0c11582b4e2ea187f7d69ef2'
-R10_CODE_SHA256 = 'fd98f4e298fc80b4e5146315a2f3d6ddd043c6da35859343e092befd74a2228f'
+R10_SHA256 = 'aaefcb935612b0aff2a175d19aaca4c08265095add3c8c854917fca9d6eb9b0a'
+R10_CODE_SHA256 = '6151e2ead32a3f37a37c4be53af908b9a59cfd62a4ee2ceaed5230752466ecc1'
 
 # Only the r10 branch sites are listed here. The FileService and NVMe timing
 # hooks used by r10p are separate from this recipe.
