@@ -2,6 +2,8 @@
 
 这份手册对应 `wlm-2026.11.10-r10` 的七个 WLM，其中照片工具已于 2026 年 11 月 20 日更新为 **r10-c1 正式版**。相机需为 Nikon Z 8，配套底座为 **`cold-retry3`**。可下载 WLM 和预编译差分补丁，底座文件在本地生成。Fenestra 仍处于实验阶段，WonderLantern/Fenestra 已提示潜在变砖风险。[照片工具 r10-c1](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.20-r10-c1) · [七个 WLM 和底座补丁](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.10-r10) · [Fenestra 项目说明](https://github.com/WonderLantern/Fenestra)
 
+2026 年 11 月 23 日新增 LUT 预览插件，入口在照片拍摄菜单。[下载安装](plugins/lut_preview.md) · [更新日志](releases/lut-preview-20261123.md)
+
 ## 准备底座
 
 相机已经运行 `cold-retry3` 时，直接跳到[安装插件](#安装插件)。工作台返回的 `build_identity` 可用来确认底座，预期值为 `f06231d84970cda74ff6afcdb2aad7d03f6fe0bc4a3ec76c15a9cfd40654579a`。
@@ -82,7 +84,9 @@ Get-FileHash -Algorithm SHA256 -LiteralPath build/cold-retry3/Z_8_0311.bin
 - 在 **Fenestra → Modules** 关闭插件，或在关机后用读卡器把扩展名改为 `.wlm.disabled`。要移除则把该文件移出目录。冷启动后按卡上的新状态装载。
 - 录像、合并和写卡结束后再关机、换卡或修改插件。切换视频档位也应在停止录制后进行。
 
-## 七个插件怎么用
+<a id="七个插件怎么用"></a>
+
+## 插件怎么用
 
 | 插件 | 功能与使用说明 |
 | --- | --- |
@@ -93,6 +97,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath build/cold-retry3/Z_8_0311.bin
 | `photo_tools.wlm` | [照片工具](plugins/photo_tools.md) · r10 的 C40、DX C60、C120/C140 RAW 和像素位移合并 |
 | `card_wav.wlm` | [卡内 WAV 快门声](plugins/card_wav.md) · 使用存储卡上的 WAV 作为快门声 |
 | `portrait_video.wlm` | [竖拍自动旋转](plugins/portrait_video.md) · 按开录时的机身方向写入视频旋转信息 |
+| `lut_preview.wlm` | [LUT 预览](plugins/lut_preview.md) · 在照片拍摄菜单选取卡内 LUT，用于后屏、取景器和 JPEG |
 
 ## 使用 Windows 调试工作台
 

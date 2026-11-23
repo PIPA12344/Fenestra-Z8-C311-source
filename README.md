@@ -6,9 +6,13 @@ Fenestra 的 Nikon Z 8 C3.11 移植。这里提供核心、WLM SDK、功能插�
 
 ## 开始使用
 
-1. **准备底座。** 当前七个功能 WLM 都配套 Nikon Z 8 C3.11 的 `cold-retry3`。Linux、macOS 和 Windows 可用预编译差分补丁从官方 C3.11 在本地生成底座。也可以按固定源码标签重新编译。[准备底座](docs/z8-usage.zh-CN.md#准备底座)
-2. **下载和安装。** 从 Release 选取所需的 WLM，复制到启动卡根目录的 `FENESTRA/`，再做一次完整冷启动。照片工具当前正式版为 **r10-c1**，已修复高速 RAW 的 Capture One 兼容问题。[照片工具 r10-c1](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.20-r10-c1) · [其他六个 WLM](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.10-r10) · [安装、更新与停用](docs/z8-usage.zh-CN.md#安装插件)
-3. **机内使用。** 在设定菜单进入 Fenestra 激活，插件界面在并列的 **Z8Mouldes**。画幅、ProRes、H.265、Log、照片工具 r10、卡内 WAV 和竖拍旋转各有使用步骤。[七个插件的用法](docs/z8-usage.zh-CN.md#七个插件怎么用)
+1. **准备底座。** 当前功能 WLM 都配套 Nikon Z 8 C3.11 的 `cold-retry3`。Linux、macOS 和 Windows 可用预编译差分补丁从官方 C3.11 在本地生成底座。也可以按固定源码标签重新编译。[准备底座](docs/z8-usage.zh-CN.md#准备底座)
+2. **下载和安装。** 从 Release 选取所需的 WLM，复制到启动卡根目录的 `FENESTRA/`，再做一次完整冷启动。照片工具当前正式版为 **r10-c1**，已修复高速 RAW 的 Capture One 兼容问题。[照片工具 r10-c1](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.20-r10-c1) · [11 月 10 日的六个配套 WLM](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.10-r10) · [安装、更新与停用](docs/z8-usage.zh-CN.md#安装插件)
+3. **机内使用。** 在设定菜单进入 Fenestra 激活，插件界面在并列的 **Z8Mouldes**。画幅、ProRes、H.265、Log、照片工具 r10、卡内 WAV 和竖拍旋转各有使用步骤。[插件用法](docs/z8-usage.zh-CN.md#插件怎么用)
+
+## LUT 预览 · 2026 年 11 月 23 日
+
+在「照片拍摄菜单 → 选择 LUT」加载卡上的 `.cube`，后屏和电子取景器可预览色彩，机内 JPEG 可直接保存所选效果。用户已在 Z8 真机复测可用。[下载插件](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.23-lut-preview) · [安装与使用](docs/plugins/lut_preview.md) · [中文更新日志](docs/releases/lut-preview-20261123.md)
 
 ## 调试与开发
 
