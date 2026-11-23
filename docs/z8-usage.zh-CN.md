@@ -2,7 +2,7 @@
 
 这份手册对应 `wlm-2026.11.10-r10` 的七个 WLM，其中照片工具已于 2026 年 11 月 20 日更新为 **r10-c1 正式版**。相机需为 Nikon Z 8，配套底座为 **`cold-retry3`**。可下载 WLM 和预编译差分补丁，底座文件在本地生成。Fenestra 仍处于实验阶段，WonderLantern/Fenestra 已提示潜在变砖风险。[照片工具 r10-c1](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.20-r10-c1) · [七个 WLM 和底座补丁](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.10-r10) · [Fenestra 项目说明](https://github.com/WonderLantern/Fenestra)
 
-2026 年 11 月 23 日新增 LUT 预览插件，入口在照片拍摄菜单。[下载安装](plugins/lut_preview.md) · [更新日志](releases/lut-preview-20261123.md)
+2026 年 11 月 23 日的 LUT 预览 r2 在 C15、C30、C60、C120 下使用原厂取景和 JPEG 色彩，可从照片拍摄菜单选择普通档位使用的 LUT。[下载安装](plugins/lut_preview.md) · [更新日志](releases/lut-preview-r2-20261123.md)
 
 ## 准备底座
 

@@ -72,7 +72,7 @@ python -B host/build_z8_photo_menu.py --stock inputs/z8-c311-main.bin --foundati
 Get-FileHash -Algorithm SHA256 build/lut-preview/lut_preview.wlm
 ```
 
-用于安装的文件是输出目录顶层的 `lut_preview.wlm`。其 SHA-256 应为 `f2c134b64e6ee1e1467b7ed272bd5e4ae1dbb7642195d156f9db97f57237ba50`。`validation.json` 记录包内三个组件，以及单独加载和搭配 r10-c1 加载的检查结果。[插件用法](plugins/lut_preview.md)
+用于安装的文件是输出目录顶层的 `lut_preview.wlm`。其 SHA-256 应为 `af9bce5b96d05d6a5c429cb63df4536b969bcb736043706755e74bf3b424abc1`。`validation.json` 记录包内三个组件，以及单独加载和搭配 r10-c1 加载的检查结果。[插件用法](plugins/lut_preview.md)
 
 要在本地重放分类菜单测试，可沿用上述输出和输入路径，以 PowerShell 运行以下命令。
 

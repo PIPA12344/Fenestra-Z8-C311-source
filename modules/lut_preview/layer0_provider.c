@@ -3,6 +3,7 @@
 
 #include "fenestra_native_pack.h"
 #include "fenestra_z8_photo_lut.h"
+#include "fenestra_z8_lut_release.h"
 #include "fenestra_memory.h"
 #include "layer0_color.h"
 #include "layer0_provider.h"
@@ -245,10 +246,14 @@ static uint32_t observe_route(void) {
     return prior;
 }
 
+static __attribute__((noinline,minsize)) int release_allowed(void) {
+    return fx_z8_lut_jpeg_release();
+}
+
 static int worker_layout(RearState *s,uint32_t ticket) {
     unsigned index=ticket&ROUTE_MASK;
     uint32_t selector=UINT32_MAX;
-    int ok=index<NO_ROUTE && visible(index) &&
+    int ok=index<NO_ROUTE && release_allowed() && visible(index) &&
            VIEW_ID(SHOOTING_VIEW)==3u && VIEW_STATE(SHOOTING_VIEW)==1u &&
            READ_PROPERTY(0x06000003u,&selector)==1u && selector==0u &&
            observe_route()==ticket;
@@ -271,7 +276,7 @@ static int output_open(const RearState *s) {
 
 static int armed(void) {
     return atomic_load(&M.online) && output_open(&rear) && atomic_load(&M.display_ready) &&
-           !atomic_load(&rear.power_closing);
+           !atomic_load(&rear.power_closing) && release_allowed();
 }
 
 static int fresh(uint64_t now,uint64_t captured) {
@@ -753,6 +758,9 @@ uint32_t fx_layer0_display_hook(uint32_t device,void *layer_desc) {
             COUNT(disp_stock_pass);
             if (confirmed && orig_y && orig_uv && !references_leased_bank(orig_y,orig_uv) &&
                 (!atomic_load(&M.quarantined) || atomic_load(&M.online))) {
+                /* Resume with a new source after the stock handoff. */
+                if (!release_allowed())
+                    r->presented_generation=atomic_load_explicit(&r->history_head,memory_order_acquire);
                 replace_sink(index,-1,ticket);
                 r->baseline_seen=1;
                 rear.route[index^1u].baseline_seen=1;

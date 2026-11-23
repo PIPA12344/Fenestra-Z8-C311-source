@@ -43,8 +43,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3390,
-      "sha256": "72fcefd5a24f78c7a0db3f810c208ebd8471594db6eaa49ed2354f914fa6952e"
+      "bytes": 3476,
+      "sha256": "ac4ffd743a0f5b0bd99ac04eba025dafdc4dfa71d54e1ea148db6dc062f6ea0d"
     },
     {
       "path": "Start-Z8-Debug.cmd",
@@ -53,8 +53,8 @@
     },
     {
       "path": "Z8-PORT-INVENTORY.json",
-      "bytes": 70569,
-      "sha256": "b28a91402d456040d6efd5d94c7a627e53fd6801861fc1337d32532676b1e99d"
+      "bytes": 70685,
+      "sha256": "8d2ca3a2b97eaf8d3f7f6ff2534aea3044d35e28b7f4a2af5c4361b7f4f50463"
     },
     {
       "path": "docs/api-reference.md",
@@ -108,8 +108,8 @@
     },
     {
       "path": "docs/plugins/lut_preview.md",
-      "bytes": 1866,
-      "sha256": "fc910f3b3df48d6bcc547a7893a583b6d5b3aec46c10a85758e76b8036abf897"
+      "bytes": 2288,
+      "sha256": "5c0d7b25e1e2113e3973c2064d0b38f75c1262a2d3cc2e98e24a00a8d78e05c8"
     },
     {
       "path": "docs/plugins/photo_tools.md",
@@ -142,6 +142,11 @@
       "sha256": "819ec83e87d4ce1953b17165f317821eb85636e19ee6a089989a28590ad7326a"
     },
     {
+      "path": "docs/releases/lut-preview-r2-20261123.md",
+      "bytes": 1505,
+      "sha256": "8ebfb697f19e835ae3ca2b36c55fda7db55d74940adca3caf8c0e48aa25a2e8d"
+    },
+    {
       "path": "docs/releases/photo-tools-r10-c1-20261120.md",
       "bytes": 1575,
       "sha256": "e3953daa65ec81d0a5c41c1be0354c782410668418d3e538e7fe2e0dc78cd80a"
@@ -159,7 +164,7 @@
     {
       "path": "docs/z8-build.zh-CN.md",
       "bytes": 6932,
-      "sha256": "ce3d00e4fdb9a55202f99511e7bf61a0dfda8623d53eb575f5f41d79266e5cf8"
+      "sha256": "e10bcbd177e53ee6eb8ee56bd4fe71974b9be2ffa5d9ba338829dc61a6f85f40"
     },
     {
       "path": "docs/z8-sdk.md",
@@ -168,8 +173,8 @@
     },
     {
       "path": "docs/z8-usage.zh-CN.md",
-      "bytes": 10927,
-      "sha256": "df2437289c9fc94a885981612a19db078052b0e714130d73719f0cc579e46e78"
+      "bytes": 11016,
+      "sha256": "310071cb66f0f02477c7d3cedcdedcc50d6fa62a76166d2ff50ac3ffe1f1635d"
     },
     {
       "path": "emulation/c110_menu.ld",
@@ -1383,8 +1388,8 @@
     },
     {
       "path": "include/fenestra_z8_lut_release.h",
-      "bytes": 1403,
-      "sha256": "38bd22c2d8bb0362368303da9b8269d37f05d899e82db711072ad943588b3738"
+      "bytes": 1362,
+      "sha256": "d16a3601e6901ab0189d90daf73471d3b83a6b76cdc17f10e3b255a422a043a1"
     },
     {
       "path": "include/fenestra_z8_photo_lut.h",
@@ -1438,8 +1443,8 @@
     },
     {
       "path": "modules/jpeg_lut/native.c",
-      "bytes": 109003,
-      "sha256": "6fbcf748e651ef12fdb20b9a5223b23487224d12cf521fc590338bf9e0039ec4"
+      "bytes": 108353,
+      "sha256": "a667575779d594a21f8e07be17f39caac07f57b7bb583ce6cc00d5d5bc55c5d9"
     },
     {
       "path": "modules/jpeg_lut/native.ld",
@@ -1488,8 +1493,8 @@
     },
     {
       "path": "modules/lut_preview/layer0_provider.c",
-      "bytes": 72262,
-      "sha256": "8e5d81ebfeb90c437fe7ff6020c73d49b32fa5a37a6d09c7988a56d83c5a80e5"
+      "bytes": 72667,
+      "sha256": "c82b71eab59bcdee27f977ab0dfa9379843f775fc92b116c74c3f68e3e79cbd0"
     },
     {
       "path": "modules/lut_preview/layer0_provider.h",
@@ -2873,8 +2878,8 @@
     },
     {
       "path": "tests/test_jpeg_smp.c",
-      "bytes": 23697,
-      "sha256": "9851fcef0eb61283e9e1678ee3f74334ed1cc2e2b92f23feb4d9a1e88c385a11"
+      "bytes": 24319,
+      "sha256": "90a09e66e45b2c5c8e08e5cf67916b50d5c3c2db01409963982be269923a9ff8"
     },
     {
       "path": "tests/test_jpeg_smp.py",
@@ -3133,13 +3138,13 @@
     },
     {
       "path": "tests/test_z8_lut_release.c",
-      "bytes": 697,
-      "sha256": "67d1c8245454ae7664e249f81cd206883b5be067a38c666b02cc5c2d494f1e4a"
+      "bytes": 1489,
+      "sha256": "93360d4b747de90b858a936cf39b0c4031cf517ad9e8de49cb0f7a2e3432b59d"
     },
     {
       "path": "tests/test_z8_lut_release.py",
-      "bytes": 721,
-      "sha256": "72398b224ca1da7e57055fb4a0ba8331d34f65b35525039d9ee7ee9323e74757"
+      "bytes": 736,
+      "sha256": "b63c9fbe81690cc2402a058b68cd92f7fefbff82056b42a8ea5c70dd7b6d4a2b"
     },
     {
       "path": "tests/test_z8_native_capsule.py",

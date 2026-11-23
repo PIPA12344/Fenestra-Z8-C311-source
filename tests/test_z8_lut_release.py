@@ -10,7 +10,7 @@ from toolchain import host_compiler
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_only_single_frame_without_self_timer_is_allowed():
+def test_lut_admission_for_single_continuous_high_speed_and_timer_modes():
     with tempfile.TemporaryDirectory() as folder:
         executable = Path(folder) / "lut-release.exe"
         subprocess.run([

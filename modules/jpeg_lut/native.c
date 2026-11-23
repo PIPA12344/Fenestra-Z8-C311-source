@@ -42,14 +42,12 @@ typedef struct {
     uint8_t *y, *uv;
 } JpegInput;
 
-/* Cached payloads contain only CPU-owned color data. Image/DSP leases remain
- * under the capture state machine and are never carried between selections. */
+/* Cache the parsed cube and curves. Each ARM table belongs to its image lease. */
 typedef struct {
     uint32_t version, file_bytes, kind;
     char drive;
     uint64_t hash;
     JpegCube *cube;
-    uint32_t *table;
 } PreparedLut;
 
 static PreparedLut lut_cache[LUT_CACHE_SLOTS];
@@ -318,6 +316,10 @@ static CaptureSlice capture_slice(uint64_t start, uint64_t deadline) {
     return (CaptureSlice){.deadline=deadline, .next=start+interval, .interval=interval, .delay=1u};
 }
 
+static __attribute__((noinline,minsize)) int release_allowed(void) {
+    return fx_z8_lut_jpeg_release();
+}
+
 #ifdef FX_Z8_LUT_SHARED_OUTPUT
 static int permitted(const JpegLut *test, uint32_t open) {
     const uint32_t *permit = atomic_load_explicit(&test->permit, memory_order_relaxed);
@@ -333,10 +335,11 @@ static int io_current(const JpegLut *test) {
 
 static int capture_admitted(const JpegLut *test) {
     /* The claimed encoder generation owns its cube and staging surfaces until
-     * its last preview (or shutdown). A preference can only gate a new MAIN. */
+     * its last preview (or shutdown). The menu permit gates only new MAIN views. */
     uint32_t ticket = atomic_load_explicit(&test->capture_ticket, memory_order_acquire);
     return ticket && ticket == atomic_load_explicit(&test->output_ticket, memory_order_relaxed) &&
-           atomic_load_explicit(&online, memory_order_acquire) && !test->cancel_requested && io_current(test);
+           atomic_load_explicit(&online, memory_order_acquire) && !test->cancel_requested &&
+           io_current(test) && release_allowed();
 }
 
 static uint32_t active_views(const JpegLut *test) {
@@ -449,7 +452,6 @@ static int close_cube(JpegLut *test) {
 
 static void clear_cached_lut(PreparedLut *entry) {
     if (entry->cube) HEAP_FREE(entry->cube);
-    if (entry->table) HEAP_FREE(entry->table);
     *entry = (PreparedLut){0};
 }
 
@@ -479,7 +481,7 @@ static uint32_t finish(JpegLut *test, uint32_t phase) {
     (void)close_cube(test);
     if (test->cube && !test->prepared) HEAP_FREE(test->cube);
     test->cube = NULL;
-    if (test->baked && (!test->prepared || test->baked != test->prepared->table)) {
+    if (test->baked) {
         if (test->use_xm6 == ARM_3D_FILE) {
             if (!clean_private_table(test->baked)) test->pool_uncertain = 1;
         } else HEAP_FREE(test->baked);
@@ -943,12 +945,6 @@ __attribute__((used, noinline)) void fx_z8_jpeg_lut_snapshot_work(void) {
 }
 
 #ifndef FX_Z8_LUT_SHARED_OUTPUT
-static int cube_mode_blocked(const JpegLut *test) {
-    /* XM6_TEST is the built-in diagnostic curve rather than a selected .cube. */
-    return atomic_load_explicit(&test->use_xm6, memory_order_relaxed) != XM6_TEST &&
-           !fx_z8_lut_single_frame();
-}
-
 static void pause_cube_capture(JpegLut *test) {
     /* Only the RUNNING owner can abandon a sequence. Earlier successful
      * submits have returned. Keep the prepared table and its workspace. */
@@ -989,7 +985,7 @@ static void reap_capture(JpegLut *test) {
 #ifdef FX_Z8_LUT_SHARED_OUTPUT
     burst_reap(test);
 #else
-    if (phase == PREVIEWS && cube_mode_blocked(test) &&
+    if (phase == PREVIEWS && !release_allowed() &&
         atomic_compare_exchange_strong(&test->phase, &phase, RUNNING)) {
         pause_cube_capture(test);
         return;
@@ -1014,6 +1010,7 @@ static Xm6Curves *cached_curves(JpegCube *cube) {
 static uint32_t warm_slice(JpegLut *test) {
     uint64_t start = counter(), interval = frequency() / COOP_HZ;
     uint32_t end = test->bake_pos + BAKE_STEP;
+    if (end > CUBE_FRAME_CACHE_WORDS) end = CUBE_FRAME_CACHE_WORDS;
     while (test->bake_pos < end && !test->cancel_requested) {
         jpeg_cube_cache_warm(test->cube, test->baked, test->bake_pos, test->bake_pos + 256);
         test->bake_pos += 256;
@@ -1037,8 +1034,6 @@ static uint32_t advance_eager(JpegLut *test, uint32_t *phase) {
             test->cube = entry->cube;
             test->prepared = entry;
             test->use_xm6 = entry->kind;
-            test->baked = entry->table;
-            test->bake_pos = entry->table ? CUBE_FRAME_CACHE_WORDS : 0;
             test->cache_hit = 1;
             next_cache_slot = (uint32_t)(entry - lut_cache) ^ 1u;
         }
@@ -1057,25 +1052,20 @@ static uint32_t advance_eager(JpegLut *test, uint32_t *phase) {
         memcpy(paths->cached[entry - lut_cache], paths->active, sizeof(paths->active));
         test->prepared = entry;
         Xm6Curves *curves = cached_curves(test->cube);
-        if (!jpeg_cube_compile_curves(test->cube, curves->values, curves->source)) {
+        if (!jpeg_cube_compile_curves(test->cube, curves->values, curves->source))
             test->use_xm6 = ARM_3D_FILE;
-            entry->table = HEAP_ALLOC(ARM_CACHE_BYTES, 0);
-            test->baked = entry->table;
-        }
         entry->kind = test->use_xm6;
         return 0;
     }
 
-    PreparedLut *entry = test->prepared;
     if (test->baked && test->bake_pos < CUBE_FRAME_CACHE_WORDS && !warm_slice(test)) return 0;
-    entry->version = LUT_CACHE_VERSION;
+    test->prepared->version = LUT_CACHE_VERSION;
     if (test->want_output && !test->staging) {
         if (!acquire_staging(test)) return MEMORY;
         uint8_t *arena = test->staging + XM6_STAGE_BYTES;
         if (test->use_xm6 == XM6_FILE) {
             if (!jpeg_xm6_prepare_curves(arena, cached_curves(test->cube)) || !acquire_snapshots(test)) return MEMORY;
-        } else if (!test->baked) {
-            /* Under heap pressure preserve the original private-pool path. */
+        } else {
             test->baked = (uint32_t *)(void *)private_plane(arena, ARM_CACHE_BYTES);
             if (!test->baked) return MEMORY;
         }
@@ -1736,7 +1726,7 @@ static uint32_t burst_current(const JpegLut *test, uint64_t selection) {
     uint32_t phase = atomic_load_explicit(&test->phase, memory_order_acquire);
     return (phase == ARMED || phase == RUNNING) && test->output_enabled &&
            atomic_load_explicit(&online, memory_order_acquire) && !test->cancel_requested &&
-           burst_selection(test) == selection && io_current(test) ? phase : IDLE;
+           burst_selection(test) == selection && io_current(test) && release_allowed() ? phase : IDLE;
 }
 
 static void burst_release(BurstExposure *slot, int keep) {
@@ -1893,7 +1883,7 @@ static uint32_t encode_image(uint32_t lane, const uint8_t *request, uintptr_t ca
 
     FxZ8LutIoGate *io = atomic_load_explicit(&test->io, memory_order_relaxed);
     if (!burst_current(test, selection) ||
-        (image == MAIN && (!permitted(test, 1) || !fx_z8_lut_jpeg_release())) ||
+        (image == MAIN && !permitted(test, 1)) ||
         !io || !fx_z8_lut_frame_take(io, (uint32_t)(selection >> 32))) {
         if (io && (__atomic_load_n(&io->state, __ATOMIC_ACQUIRE) & FX_Z8_LUT_IO_EARLY_OFF))
             jpeg_flight(FX_Z8_FLIGHT_JPEG_FALLBACK, 0, JPEG_INTERRUPTED, image, 0);
@@ -2032,7 +2022,7 @@ static uint32_t encode_image(uint32_t lane, const uint8_t *request, uintptr_t ca
     uint32_t phase = atomic_load_explicit(&test->phase, memory_order_acquire);
     if (lane > 1u || image >= IMAGE_COUNT ||
         (phase == ARMED && (!atomic_load_explicit(&online, memory_order_acquire) ||
-                           test->cancel_requested || cube_mode_blocked(test))) ||
+                           test->cancel_requested || !release_allowed())) ||
         (phase != PREVIEWS && (phase != ARMED || image != MAIN)) ||
         !atomic_compare_exchange_strong(&test->phase, &phase, RUNNING)) return JPEG(lane, request);
 
@@ -2042,7 +2032,7 @@ static uint32_t encode_image(uint32_t lane, const uint8_t *request, uintptr_t ca
         return JPEG(lane, request);
     }
     if (test->linked && phase == PREVIEWS && (image == MAIN || capture != test->capture) &&
-        !cube_mode_blocked(test)) {
+        release_allowed()) {
         atomic_store_explicit(&test->phase, PREVIEWS, memory_order_release);
         return JPEG(lane, request);
     }
@@ -2055,7 +2045,7 @@ static uint32_t encode_image(uint32_t lane, const uint8_t *request, uintptr_t ca
         if (test->cancel_requested || !atomic_load_explicit(&online, memory_order_acquire))
             return cleanup(test, encode_original(stats, lane, request, JPEG_INTERRUPTED), LAYOUT);
     }
-    if (cube_mode_blocked(test)) return encode_stock_pausing_cube(test, stats, lane, request);
+    if (!release_allowed()) return encode_stock_pausing_cube(test, stats, lane, request);
     uint32_t encoded;
     if (test->use_xm6) {
         uint64_t start = counter();
@@ -2073,7 +2063,7 @@ static uint32_t encode_image(uint32_t lane, const uint8_t *request, uintptr_t ca
         stats->capture_number = test->capture_number;
         Xm6Result staged = stage_xm6(test, image, deadline, 0);
         test->transform_ticks += counter()-start;
-        int blocked = cube_mode_blocked(test);
+        int blocked = !release_allowed();
         if (staged == XM6_COMPLETE && !blocked) {
             goto submitted;
         }
@@ -2099,7 +2089,7 @@ static uint32_t encode_image(uint32_t lane, const uint8_t *request, uintptr_t ca
         uint64_t start = counter();
         int staged = frequency && stage_images(test, start, frequency / 2u);
         test->transform_ticks = counter() - start;
-        if (cube_mode_blocked(test)) return encode_stock_pausing_cube(test, stats, lane, request);
+        if (!release_allowed()) return encode_stock_pausing_cube(test, stats, lane, request);
         if (!staged) return cleanup(test, encode_original(stats, lane, request, JPEG_TIMEOUT), TIMING);
         test->lane = lane;
         atomic_store_explicit(&test->expires, start + 2u * frequency, memory_order_relaxed);
@@ -2114,7 +2104,7 @@ static uint32_t encode_image(uint32_t lane, const uint8_t *request, uintptr_t ca
             memcmp((const void *)address, &test->source[image], sizeof(JpegInput)))
             return cleanup(test, encode_original(stats, lane, request, 0), PAIRING);
     }
-    if (cube_mode_blocked(test)) return encode_stock_pausing_cube(test, stats, lane, request);
+    if (!release_allowed()) return encode_stock_pausing_cube(test, stats, lane, request);
 submitted:;
     int stock_only = submit_stock_only(test);
     encoded = stock_only ? JPEG(lane, request) : encode_staged(test, image, lane, request);

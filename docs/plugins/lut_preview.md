@@ -1,6 +1,16 @@
 # LUT 预览
 
-为 Nikon Z 8 C3.11 的 `cold-retry3` 底座添加「照片拍摄菜单 → 选择 LUT」。在后屏或电子取景器中预览所选色彩，拍摄时将同一份 3D LUT 应用到 JPEG。首次使用可选择 FX 画幅、L 尺寸和单张 JPEG。[下载 lut_preview.wlm](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/download/wlm-2026.11.23-lut-preview/lut_preview.wlm) · [本版更新日志](../releases/lut-preview-20261123.md)
+适用于 Nikon Z 8 C3.11 的 `cold-retry3` 底座。在「照片拍摄菜单 → 选择 LUT」载入卡上的 3D LUT，即可在支持的拍摄档位预览色彩并保存到 JPEG。[下载 lut_preview.wlm](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/download/wlm-2026.11.23-lut-preview-r2/lut_preview.wlm) · [r2 更新日志](../releases/lut-preview-r2-20261123.md)
+
+## 哪些档位使用 LUT
+
+| 拍摄档位 | 后屏与电子取景器 | 机内 JPEG 及内嵌预览 |
+| --- | --- | --- |
+| 单张 S、低速连拍 CL、高速连拍 CH，且关闭自拍 | 所选 LUT | 所选 LUT（支持的尺寸见下文） |
+| 高速画面捕捉 C15、C30、C60、C120 | 原厂画面 | 原厂色彩 |
+| 自拍 | 原厂画面 | 原厂色彩 |
+
+从高速画面捕捉切回 S、CL 或 CH 后，新的取景画面和拍摄的 JPEG 会自动恢复之前选中的 LUT。
 
 ## 存储卡怎么放
 

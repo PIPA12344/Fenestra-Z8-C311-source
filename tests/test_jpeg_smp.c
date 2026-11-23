@@ -360,24 +360,37 @@ static void join_thread(unsigned i) {
 #endif
 }
 
-static uint32_t release_mode, self_timer;
+static uint32_t release_mode, self_timer, continuous_mode;
 
 uint32_t fx_z8_lut_test_release_read(uintptr_t address) {
     if (address == FX_Z8_LUT_RELEASE_MODE_ADDRESS) return release_mode;
+    if (address == FX_Z8_LUT_CONTINUOUS_MODE_ADDRESS) return continuous_mode;
     assert(address == FX_Z8_LUT_SELF_TIMER_ADDRESS);
     return self_timer;
 }
 
 static void burst_admission_and_off(void) {
-    for (release_mode = 0; release_mode < 2; ++release_mode) {
-        assert(fx_z8_lut_jpeg_release());
-        assert(fx_z8_lut_single_frame() == (release_mode == 0));
+    static const uint32_t rejected_speeds[] = {2, 3, 4, 5, 6, 7, UINT32_MAX};
+    for (unsigned i = 0; i < sizeof(rejected_speeds) / sizeof(rejected_speeds[0]); ++i) {
+        continuous_mode = rejected_speeds[i];
+        release_mode = 1;
+        assert(!fx_z8_lut_jpeg_release() && !fx_z8_lut_single_frame());
+        release_mode = 0;
+        assert(fx_z8_lut_jpeg_release() && fx_z8_lut_single_frame());
     }
+    release_mode = 1;
+    continuous_mode = 0;
+    assert(fx_z8_lut_jpeg_release() && !fx_z8_lut_single_frame());
+    continuous_mode = 1;
+    assert(fx_z8_lut_jpeg_release() && !fx_z8_lut_single_frame());
+    release_mode = 4;
     assert(!fx_z8_lut_jpeg_release());
     release_mode = UINT32_MAX;
     assert(!fx_z8_lut_jpeg_release());
     release_mode = 1;
     self_timer = 1;
+    assert(!fx_z8_lut_jpeg_release());
+    release_mode = 0;
     assert(!fx_z8_lut_jpeg_release());
 
     FxZ8LutIoGate gate = {.state = UINT64_C(1) << 32 | 1u};
