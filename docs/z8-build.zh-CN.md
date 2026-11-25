@@ -1,5 +1,7 @@
 # Z8 C3.11 本地构建
 
+复建 2026-11-26 整合包中的 8 个 WLM，请按[整合包构建步骤](wlm-current-build.zh-CN.md)操作。
+
 使用已发布的 WLM 时，可按[使用手册](z8-usage.zh-CN.md#准备底座)应用预编译补丁，或从固定源码重建精确的 `cold-retry3`。以下命令供开发者构建其他本地配置。先准备 Python 3.11+ 和 LLVM，将 `clang`、`ld.lld`、`llvm-objcopy`、`llvm-nm` 加入 PATH，再用官方 C3.11 提取无 CRC MAIN。固件包和 MAIN 都会校验 SHA-256。[尼康原始文件](https://download.nikonimglib.com/archive8/wP5Vr003qbpC07ibhJ666rmRfF47/Z_8_0311.bin)
 
 ```sh
@@ -47,13 +49,13 @@ foreach ($id in 'framing', 'prores', 'h265', 'log_colour', 'photo_tools') {
 python host/package_z8_wlm_plugins.py --components build/local-components --frontends build/local-frontends --output build/local-plugins
 ```
 
-目录参数都使用新路径。组件构建会用原厂输入和选定配方独立核对语言表地址。五个生成的 WLM 分别输出到 `build/local-plugins/FENESTRA/`。画幅、ProRes、H.265 和 Log 色彩使用 Windows x64 LLVM 19.1.5 和 `--optimize s` 重建时，可得到当前 Release 对应的文件。此步骤的照片工具是用于下一步的基础包。
+目录参数都使用新路径。组件构建会用原厂输入和选定配方独立核对语言表地址。五个生成的 WLM 分别输出到 `build/local-plugins/FENESTRA/`。画幅、ProRes、H.265 和 Log 色彩使用 Windows x64 LLVM 19.1.5 和 `--optimize s` 重建时，可得到旧版 Release 对应的文件。此步骤的照片工具是用于下一步的基础包。
 
 卡内 WAV 和竖拍 MOV 的构建脚本位于 `host/build_z8_card_wav.py` 与 `host/build_z8_portrait_video.py`。它们需要经过哈希校验的 cold-retry3 底座 MAIN。按 [cold-retry3 源码重编说明](z8-usage.zh-CN.md#从源码重新编译) 生成 `build/cold-retry3/core/z8-core.main`。
 
 ## 照片工具 r10
 
-准备上节的 NikonFirmwarePatch 工具包及原厂 C3.11 MAIN。先按上节构建基础包 `build/local-plugins/FENESTRA/photo_tools.wlm`，再用 Windows x64 LLVM **19.1.5** 构建当前正式版 r10-c1。
+准备上节的 NikonFirmwarePatch 工具包及原厂 C3.11 MAIN。先按上节构建基础包 `build/local-plugins/FENESTRA/photo_tools.wlm`，再用 Windows x64 LLVM **19.1.5** 构建历史版 r10-c1。
 
 ```powershell
 python -B host/build_photo_tools_r10.py --stock inputs/z8-c311-main.bin --base-wlm build/local-plugins/FENESTRA/photo_tools.wlm --llvm-bin $llvm --output-dir build/local-photo-tools-r10
@@ -61,26 +63,9 @@ python -B host/build_photo_tools_r10.py --stock inputs/z8-c311-main.bin --base-w
 
 产物为 `build/local-photo-tools-r10/photo_tools.wlm`。脚本验证源生成的原生代码与最终 WLM，最终 SHA-256 应为 `aaefcb935612b0aff2a175d19aaca4c08265095add3c8c854917fca9d6eb9b0a`。使用方法见[照片工具](plugins/photo_tools.md)。
 
-## LUT 预览
+## Cube LUT
 
-用本页开头的命令提取原厂 MAIN，按 [cold-retry3 源码重编说明](z8-usage.zh-CN.md#从源码重新编译) 在固定标签的独立目录生成底座 MAIN。另取公开的 [照片工具 r10-c1](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/download/wlm-2026.11.20-r10-c1/photo_tools.wlm) 放到当前源码目录的 `inputs/r10-c1/photo_tools.wlm`。构建器读取该固定版本的菜单数据，以支持两个插件同时加载。
-
-以下路径假定底座源码目录与当前源码目录同级。使用 LLVM 19.1.5，并将 `$llvm` 设为其 `bin` 目录。
-
-```powershell
-python -B host/build_z8_photo_menu.py --stock inputs/z8-c311-main.bin --foundation ../Fenestra-cold-retry3/build/cold-retry3/core/z8-core.main --photo-tools inputs/r10-c1/photo_tools.wlm --llvm-bin $llvm --output build/lut-preview
-Get-FileHash -Algorithm SHA256 build/lut-preview/lut_preview.wlm
-```
-
-用于安装的文件是输出目录顶层的 `lut_preview.wlm`。其 SHA-256 应为 `af9bce5b96d05d6a5c429cb63df4536b969bcb736043706755e74bf3b424abc1`。`validation.json` 记录包内三个组件，以及单独加载和搭配 r10-c1 加载的检查结果。[插件用法](plugins/lut_preview.md)
-
-要在本地重放分类菜单测试，可沿用上述输出和输入路径，以 PowerShell 运行以下命令。
-
-```powershell
-python -m pip install pytest
-$env:FX_Z8_LUT_FOUNDATION = (Resolve-Path ../Fenestra-cold-retry3/build/cold-retry3/core/z8-core.main).Path
-python -B -m pytest -q tests/test_lut_preview_menu.py tests/test_rear_color_neon.py tests/test_jpeg_cube_neon.py
-```
+当前 Cube LUT 的构建命令见[整合包构建步骤](wlm-current-build.zh-CN.md)。旧版 `lut_preview.wlm` 的源码见 [LUT 预览 r2 标签](https://github.com/PIPA12344/Fenestra-Z8-C311-source/tree/wlm-2026.11.23-lut-preview-r2)。
 
 ## Windows 调试工作台
 

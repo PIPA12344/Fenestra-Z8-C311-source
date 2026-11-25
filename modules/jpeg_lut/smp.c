@@ -8,7 +8,11 @@
 enum { PRIORITY = 28 };
 #else
 #define NEON_SENTINEL jpeg_neon_sentinel
-enum { PRIORITY = 22 };
+/* C3.11 pins tasks per core and stock tasks use priorities 1..39. At 22 the
+ * helpers held off every stock task at 23..39 on Cores 2 and 3 for a whole
+ * JPEG, which stopped AF-C until the image was written. Below every stock
+ * task, grading takes only idle CPU there. The kernel accepts 1..256. */
+enum { PRIORITY = 40 };
 #endif
 extern unsigned NEON_SENTINEL(int32_t (*delay)(uint32_t));
 
@@ -93,7 +97,9 @@ static uint64_t cancel_window_ticks(void) {
 #ifdef FX_LUT_PREVIEW_SMP
     const uint32_t hz_divisor = 2u; /* Rear polls asynchronously for up to 500 ms. */
 #else
-    const uint32_t hz_divisor = 50u; /* An encoder lane can block only for a bounded drain. */
+    /* An encoder lane can block only for a bounded drain. A lowest-priority
+     * helper may wait behind stock work before it sees the cancel. */
+    const uint32_t hz_divisor = 10u;
 #endif
 #ifdef FX_JPEG_SMP_TEST
     return 24000000u / hz_divisor;

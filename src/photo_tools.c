@@ -4,7 +4,7 @@
 static int enter(FxPhotoToolsControl *s){uint32_t z=0;return atomic_compare_exchange_strong_explicit(&s->gate,&z,1u,memory_order_acquire,memory_order_relaxed);}
 static void leave(FxPhotoToolsControl *s){atomic_store_explicit(&s->gate,0u,memory_order_release);}
 void fx_photo_tools_init(FxPhotoToolsControl *s,uint32_t supported,const FxPhotoToolsOps *ops){
-    memset(s,0,sizeof(*s));s->supported=supported&(FX_PHOTO_PRECAPTURE|FX_PHOTO_MERGE);s->ops=ops;
+    memset(s,0,sizeof(*s));s->supported=supported&(FX_PHOTO_PRECAPTURE|FX_PHOTO_MERGE|FX_PHOTO_V051_FEATURES);s->ops=ops;
 }
 void fx_photo_tools_finish(FxPhotoToolsControl *s,uint32_t status,uint32_t groups,uint32_t targets,uint32_t merged,uint32_t attempted,uint32_t seconds){
     atomic_store(&s->status,status);atomic_store(&s->groups,groups);atomic_store(&s->targets,targets);

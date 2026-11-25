@@ -4,15 +4,24 @@ Only new outputs are created. Native bytes remain in their owning component;
 shared exact variants never contain another feature's backend.
 """
 import argparse
+from bisect import bisect_right
 import hashlib
 import json
 from pathlib import Path
 import struct
-from z8_wlm_native_recipes import (BITS,COMPONENTS,compose_recipe,component_windows,sha,BASE)
+from wlm_bundle import decode_bundle
+from wlm_record_coalesce import coalesce_patches
+from z8_wlm_native_recipes import (BITS,COMPONENTS,compose_recipe,compose_recipe_v051,component_windows,sha,BASE,
+ apply_v051_locale,compact_v051_locales)
 from z8_native_capsule import (Patch,encode,decode,IMAGE,HOOK,EXEC,WRITE,INSTRUCTION,POINTER,DATA,NONE,
- CODE_AREAS,_spans_disjoint,_elf_symbol_bytes,_word_branch,derive_native_text,native_resource_supplements)
+ CODE_AREAS,V051_ARENA_PERMISSIONS,_spans_disjoint,_elf_symbol_bytes,_word_branch,
+ derive_native_text,native_resource_supplements)
 from z8_native_arena import arena_profile,verify_arena,ARENA_BEGIN,ARENA_END
 from z8_native_profile import check_main
+from z8_wlm_v051_validation import (
+ CORE_CELLS, CORE_ID, FOUNDATION, FOUNDATION_SHA, PEER_ARENA, TEXT_COUNT, coalesce, foundation_gate,
+ peer_destinations, read_peers, validate_record)
+from z8_wlm_v051_locale import LocaleAudit, reachable_ids, resolve_texts, text_digest
 
 SLOTS={'shared.movie':0x408d0000,'prores':0x408e0000,'h265':0x408f0000,
  'log_colour':0x40900000,'framing':0x40910000,'photo_tools':0x40920000,'shared.locale':0x40930000}
@@ -21,13 +30,20 @@ DEPENDENCIES={'framing':('controls.movie_close_original.framing',0x40960870),
  'prores':('controls.dependency.tier_republish.prores',0x40a41250),
  'h265':('controls.dependency.tier_republish.h265',0x40a41250),
  'photo_tools':('controls.dependency.psm_worker.photo_tools',0x409a44cc)}
+SELECTORS={'shared.locale':31,'shared.menu':15,'shared.quality':6}
+V051_SELECTORS={**SELECTORS,'shared.locale':BITS['prores'],'shared.menu':31}
+
+
+def component_version(suite):
+ return 2 if suite=='v051' else 1
 
 
 def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':')).encode()
 
 
-def verify_elf_metadata(result,m):
+def verify_elf_metadata(result,m,*,suite='legacy'):
  component=result['component'];bit=BITS.get(component,0)
+ if m.get('suite','legacy')!=suite:raise ValueError('component control recipe suite differs')
  if m.get('component_id')!=component or m.get('features5')!=bit or m.get('features')!=bit:raise ValueError('component metadata selection differs')
  if m.get('fixed_base')!=SLOTS[component] or m.get('limit')!=SLOTS[component]+65536:raise ValueError('component slot differs')
  if m.get('stage_rank')!=RANKS[component] or m.get('entry')!=result['entry']:raise ValueError('component entry/rank differs')
@@ -40,6 +56,8 @@ def verify_elf_metadata(result,m):
    if expected.get(key)!=actual[key]:raise ValueError('component segment '+key+' differs')
   if expected.get('sha')!=sha(actual['data'][:actual['file_bytes']]) or expected.get('memory_sha256')!=sha(actual['data']):raise ValueError('component segment digest differs')
  expected_deps=[] if component not in DEPENDENCIES else [dict(name=DEPENDENCIES[component][0],version=1,address=DEPENDENCIES[component][1])]
+ if component=='photo_tools' and suite=='v051':
+  expected_deps[0]['address']=0x409a4550
  if m.get('dependencies')!=expected_deps:raise ValueError('component dependency aliases differ')
  if bit:
   expected=[dict(name='controls.movie_open.'+component,version=1,flags=1,address=result['symbols']['fx_wlm_movie_open']),dict(name='controls.movie_close.'+component,version=1,flags=1,address=result['symbols']['fx_wlm_movie_close'])]
@@ -58,7 +76,7 @@ def verify_elf_metadata(result,m):
  result['exports']=expected
 
 
-def read_component_elf(blob,component,metadata):
+def read_component_elf(blob,component,metadata,*,suite='legacy'):
     base=SLOTS[component];mask=BITS.get(component,0)
     # Fixed ET_EXEC AArch64 only: ELF loading is copying, never runtime linking.
     if not 64<=len(blob)<=16*1024*1024 or blob[:16]!=b'\x7fELF\x02\x01\x01'+bytes(9):
@@ -118,16 +136,20 @@ def read_component_elf(blob,component,metadata):
     if symbols.get('fx_native_pack_feature_mask')!=mask:
         raise ValueError('controls feature selection differs')
     result=dict(entry=entry,symbols=symbols,symbol_sizes=symbol_sizes,segments=segments,sha256=sha(blob),component=component)
-    verify_elf_metadata(result,metadata)
+    verify_elf_metadata(result,metadata,suite=suite)
     return result
 
 
 
 
-def window_patch(w):
+def window_patch(w,*,suite='legacy'):
  va=BASE+w.offset;address=w.address;n=len(w.new)
  if ARENA_BEGIN<=va and va+n<=ARENA_END:
   if any(w.old):raise ValueError('native IMAGE is not original zero arena')
+  if suite=='v051':
+   areas=[flags for (lo,hi),flags in V051_ARENA_PERMISSIONS.items() if lo<=va<va+n<=hi]
+   if len(areas)!=1:raise ValueError(f'no unique RX/RO/RW allocation for {w.purpose} at {va:#x}+{n:#x}')
+   return Patch(IMAGE,areas[0],address,w.old,w.new)
   code=[(lo,hi)for lo,hi in CODE_AREAS if lo<=va<hi]
   if code and va+n>code[0][1]:raise ValueError('native code escaped reviewed allocation')
   return Patch(IMAGE,EXEC if code else 0,address,w.old,w.new)
@@ -139,14 +161,37 @@ def window_patch(w):
  return Patch(HOOK,flags,address,w.old,w.new)
 
 
-def text_layout(stock,recipe):
+def _split_branch_ingress(patch):
+ if patch.kind!=HOOK or patch.flags!=INSTRUCTION or len(patch.new)==4:
+  return [patch]
+ result=[];start=0
+ for at in range(0,len(patch.new),4):
+  word=struct.unpack_from('<I',patch.new,at)[0]
+  if word&0x7c000000!=0x14000000:continue
+  immediate=word&0x3ffffff
+  target=patch.address+at+(immediate if immediate<0x2000000 else immediate-0x4000000)*4
+  if not ARENA_BEGIN<=target<ARENA_END:continue
+  if start<at:
+   result.append(Patch(HOOK,INSTRUCTION,patch.address+start,patch.old[start:at],patch.new[start:at]))
+  result.append(Patch(HOOK,INSTRUCTION,patch.address+at,patch.old[at:at+4],patch.new[at:at+4]))
+  start=at+4
+ if start<len(patch.new):
+  result.append(Patch(HOOK,INSTRUCTION,patch.address+start,patch.old[start:],patch.new[start:]))
+ return result
+
+
+def text_layout(stock,recipe,*,suite='legacy'):
  rows=[w.metadata()for w in recipe.windows]
- text=derive_native_text(stock,recipe.image,rows)
+ text=derive_native_text(stock,recipe.image,rows,shared_tables=suite=='v051')
  return dict(languages=text['languages'],text_count=text['loaded_count'],offsets_directory=int(text['offsets_directory'],0),pools_directory=int(text['pools_directory'],0))
 
 
-def component_capsule(stock,recipe,owner,controls=None):
- patches=[window_patch(w)for w in component_windows(recipe,owner)] if owner!='shared.movie'else []
+def component_capsule(stock,recipe,owner,controls=None,*,suite='legacy',foundation=None,peer_spans=(),
+                      coalesce_records=True, peer_wlms=None):
+ windows=component_windows(recipe,owner) if owner!='shared.movie' else ()
+ patches=[window_patch(w,suite=suite) for w in windows]
+ if suite=='v051':
+  patches=[part for patch in patches for part in _split_branch_ingress(patch)]
  if owner=='log_colour':
   resource_rows=[dict(w.metadata(),purpose=('log: '+w.purpose if w.owner=='log_colour' else w.purpose))for w in recipe.windows]
   items,_=native_resource_supplements(stock,recipe.image,resource_rows,4)
@@ -159,7 +204,7 @@ def component_capsule(stock,recipe,owner,controls=None):
    flags=EXEC if segment['flags']&1 else WRITE if segment['flags']&2 else 0
    patches.append(Patch(IMAGE,flags,segment['va'],old,segment['data']))
   if owner=='shared.locale':
-   expected=text_layout(stock,recipe);raw=struct.pack('<4I2Q',1,32,expected['languages'],expected['text_count'],expected['offsets_directory'],expected['pools_directory'])
+   expected=text_layout(stock,recipe,suite=suite);raw=struct.pack('<4I2Q',1,32,expected['languages'],expected['text_count'],expected['offsets_directory'],expected['pools_directory'])
    if _elf_symbol_bytes(controls,'fx_wlm_locale',32)!=raw:raise ValueError('locale descriptor differs from actual recipe tables')
    va=controls['symbols']['fx_wlm_locale']
    if not any(not s['flags']&2 and s['va']<=va and va+32<=s['va']+s['memory_bytes']for s in controls['segments']):raise ValueError('locale descriptor is not sealed read-only')
@@ -168,8 +213,21 @@ def component_capsule(stock,recipe,owner,controls=None):
     old=stock[site-BASE:site-BASE+4]
     if old!=struct.pack('<I',word):raise ValueError('MOV stock instruction preimage differs')
     patches.append(Patch(HOOK,INSTRUCTION,site,old,_word_branch(site,controls['symbols'][symbol])))
- patches.sort(key=lambda p:(p.kind,p.address))
+ if suite=='v051':
+  if foundation is None:raise ValueError('v0.5.1 components require the exact cold-retry3 preimage')
+  blocked=[*peer_spans,*((a,a+n) for a,n in CORE_CELLS),
+           *((w.address,w.address+len(w.new)) for w in recipe.windows if w.owner!=owner)]
+  patches=coalesce(patches,stock,foundation,blocked)
+  for patch in patches:
+   validate_record(patch,stock,foundation,candidate=True)
+   if patch.kind==IMAGE and any(patch.address<hi and lo<patch.address+len(patch.new) for lo,hi,_ in PEER_ARENA):
+    raise ValueError(f'{owner} IMAGE touches a reserved sibling page at {patch.address:#x}')
+ else:
+  patches.sort(key=lambda p:(p.kind,p.address))
  if not patches:raise ValueError('empty native component')
+ if coalesce_records:
+  # Compact the projected records without extending their byte coverage.
+  patches,_=coalesce_patches(patches)
  # Identity is local: no selection mask, unrelated recipe MAIN or other ELFs.
  identity=hashlib.sha256(owner.encode()+b'\0'+b''.join(struct.pack('<IIQI',p.kind,p.flags,p.address,len(p.new))+p.old+p.new for p in patches)).digest()
  dependency=arena_profile()['requires_id'];dependency=int(dependency,0)if isinstance(dependency,str)else dependency
@@ -184,16 +242,40 @@ def verify_collection(stock,recipe,components):
    address=row.address;old=row.old;new=row.new
    destinations.append((address,address+len(new)));records.append((address,old,new,owner))
  _spans_disjoint(destinations,'selected component destination')
- by_address={a:(old,new,owner)for a,old,new,owner in records}
+ records.sort()
+ starts=[r[0] for r in records]
  for window in recipe.windows:
   if window.owner=='foundation.reserve-only' or window.address==0x40ceef10:continue
-  if by_address.get(window.address)!=(window.old,window.new,window.owner):raise ValueError('selected components do not reconstruct native recipe window')
- if 0xa0281cd5c in by_address:raise ValueError('forbidden native global count HOOK')
- return dict(records=len(records),write_bytes=sum(len(new)for _,_,new,_ in records),owners=sorted(components),recipe_sha256=sha(recipe.image),exact_projection=True)
+  index=bisect_right(starts,window.address)-1
+  cursor=0
+  while index>=0 and cursor<len(window.new):
+   address,old,new,owner=records[index]
+   offset=window.address+cursor-address
+   size=min(len(new)-offset,len(window.new)-cursor)
+   if size<=0 or offset<0 or owner!=window.owner or (
+       old[offset:offset+size],new[offset:offset+size])!=(window.old[cursor:cursor+size],window.new[cursor:cursor+size]):
+    break
+   cursor+=size;index+=1
+   if index==len(records):break
+  if cursor!=len(window.new):
+   raise ValueError(f'{window.owner} does not reconstruct {window.purpose} at {window.address:#x}')
+ if 0xa0281cd5c in starts:raise ValueError('forbidden native global count HOOK')
+ return dict(records=len(records),write_bytes=sum(len(new)for _,_,new,_ in records),
+             owners=sorted(components),recipe_sha256=sha(recipe.image),exact_projection=True)
 
 
-def create_catalog(firmware,controls_root,output):
+def _create_catalog(firmware,controls_root,output,*,suite='legacy',foundation_path=FOUNDATION,photo=None,
+                    coalesce_records=True, peer_wlms=None):
  stock=Path(firmware).read_bytes();check_main(stock);verify_arena(stock)
+ foundation=foundation_gate(stock,foundation_path) if suite=='v051' else None
+ peers=()
+ if foundation:
+  target=bytes.fromhex(sha(stock))
+  bundles=(read_peers(target) if peer_wlms is None else
+           {path:decode_bundle(path.read_bytes(),target=target) for path in peer_wlms})
+  peers=peer_destinations(bundles)
+ selectors=V051_SELECTORS if foundation else SELECTORS
+ _spans_disjoint(V051_ARENA_PERMISSIONS,'v0.5.1 IMAGE page permissions')
  controls_root=Path(controls_root).resolve();output=Path(output).resolve()
  if output.exists():raise FileExistsError('new native catalog output required')
  workspace=Path(__file__).resolve().parents[1]
@@ -203,22 +285,51 @@ def create_catalog(firmware,controls_root,output):
  for owner in SLOTS:
   dirname='bridge'if owner=='shared.movie'else'locale'if owner=='shared.locale'else owner
   directory=controls_root/dirname
-  controls[owner]=read_component_elf((directory/'controls.elf').read_bytes(),owner,json.loads((directory/'controls.json').read_text()))
- variants={};verification=[];layouts={}
+  controls[owner]=read_component_elf((directory/'controls.elf').read_bytes(),owner,json.loads((directory/'controls.json').read_text()),suite=suite)
+ variants={};verification=[];layouts={};full_recipe=None
+ if foundation:
+  all_features=sum(BITS.values())
+  without_prores=all_features^BITS['prores']
+  references={mask:compose_recipe_v051(stock,mask,photo) for mask in (without_prores,all_features)}
+  locales=compact_v051_locales(stock,references[without_prores],references[all_features])
+  audit=LocaleAudit()
  for mask in range(1,32):
-  recipe=compose_recipe(stock,mask);layout=text_layout(stock,recipe);layouts[mask]=layout
+  locale_evidence={}
+  if foundation:
+   recipe=references.pop(mask,None) or compose_recipe_v051(stock,mask,photo)
+   reference=resolve_texts(recipe.image)
+   audit.observe(mask,reference)
+   selector=mask&selectors['shared.locale']
+   recipe=apply_v051_locale(recipe,locales[selector])
+   actual=resolve_texts(recipe.image)
+   ids=reachable_ids(mask)
+   for language,(original,compact) in enumerate(zip(reference,actual)):
+    for ident in ids:
+     if original[ident]!=compact[ident]:
+      raise ValueError(f'compact locale changes mask {mask:#x}, language {language}, ID {ident}')
+   locale_evidence=dict(locale_text_sha256=text_digest(reference,mask),locale_selector=selector,
+                        locale_reachable_ids=len(ids))
+  else:
+   recipe=compose_recipe(stock,mask)
+  layout=text_layout(stock,recipe,suite=suite);layouts[mask]=layout
+  if foundation and layout['text_count']!=TEXT_COUNT:
+   raise ValueError(f'v0.5.1 locale mask {mask:#x} has {layout["text_count"]} entries')
   selected_owners=[name for name in COMPONENTS if mask&BITS[name]]+['shared.locale','shared.movie']
-  if mask&15:selected_owners.append('shared.menu')
-  if mask&6:selected_owners.append('shared.quality')
+  selected_owners.extend(name for name in ('shared.menu','shared.quality') if mask&selectors[name])
   collection={}
   for owner in selected_owners:
-   selector_mask=31 if owner=='shared.locale'else 15 if owner=='shared.menu'else 6 if owner=='shared.quality'else 0
+   selector_mask=selectors.get(owner,0)
    value=mask&selector_mask
-   blob=component_capsule(stock,recipe,owner,controls.get(owner));key=(owner,value)
+   blob=component_capsule(stock,recipe,owner,controls.get(owner),suite=suite,
+                          foundation=foundation,peer_spans=peers,coalesce_records=coalesce_records);key=(owner,value)
    if key in variants and variants[key]['capsule']!=blob:raise ValueError('component changes with unrelated installed plugin: '+owner)
    variants[key]=dict(mask=selector_mask,value=value,capsule=blob)
    collection[owner]=blob
-  verification.append(dict(mask=mask,**verify_collection(stock,recipe,collection)))
+  verification.append(dict(mask=mask,**verify_collection(stock,recipe,collection),**locale_evidence))
+  if foundation and mask==31:
+   full_recipe=recipe.metadata()
+ if foundation:
+  locale_audit=audit.verify()
  if len({canonical(v)for v in layouts.values()})!=1:raise ValueError('locale descriptor unexpectedly needs conditional entry ELF')
  output.mkdir(parents=True)
  component_rows=[]
@@ -228,19 +339,45 @@ def create_catalog(firmware,controls_root,output):
    if name!=owner:continue
    filename=str(value)+'.fnc';blob=variant['capsule'];(directory/filename).write_bytes(blob)
    rows.append(dict(mask=variant['mask'],value=value,capsule=owner+'/'+filename,bytes=len(blob),sha256=sha(blob)))
-  component_rows.append(dict(id=owner,version=1,selector_bit=BITS.get(owner,0),rank=RANKS[owner],variants=rows))
- result=dict(schema='fenestra.wlm-native-component-catalog/v1',target_main_sha256=sha(stock),arena_profile=arena_profile(),feature_bits=BITS,
+  component_rows.append(dict(id=owner,version=component_version(suite),selector_bit=BITS.get(owner,0),rank=RANKS[owner],variants=rows))
+ result=dict(schema='fenestra.wlm-native-component-catalog/v1',suite=suite,target_main_sha256=sha(stock),arena_profile=arena_profile(),feature_bits=BITS,
   components=component_rows,selection_verification=verification,locale_descriptor=next(iter(layouts.values())),
   controls={k:dict(elf_sha256=v['sha256'],entry=hex(v['entry']),exports=v['exports'])for k,v in controls.items()},
   qualification=dict(pinned_recipe_reconstruction=True,all_31_owner_combinations=True,native_transaction_executed=False,physical_camera=False))
+ if full_recipe is not None:
+  evidence='all-owners-recipe.json'
+  evidence_bytes=(json.dumps(full_recipe,indent=2)+'\n').encode('utf-8')
+  (output/evidence).write_bytes(evidence_bytes)
+  result.update(foundation_sha256=FOUNDATION_SHA,core_build_identity=CORE_ID,locale_audit=locale_audit,
+                full_recipe=dict(file=evidence,sha256=sha(evidence_bytes)))
  (output/'catalog.json').write_text(json.dumps(result,indent=2)+'\n')
  return result
+
+
+def create_catalog(firmware,controls_root,output,*,suite='legacy',foundation=FOUNDATION,photo=None,
+                   coalesce_records=True, peer_wlms=None):
+ if suite=='v051':
+  from z8_feature_suite_v051 import run_isolated
+  return run_isolated('build_wlm_native_components:_create_catalog',firmware,controls_root,
+                      output,suite=suite,foundation_path=foundation,photo=photo,
+                      coalesce_records=coalesce_records,peer_wlms=peer_wlms)
+ if suite!='legacy':raise ValueError('unknown native recipe suite')
+ return _create_catalog(firmware,controls_root,output,coalesce_records=coalesce_records)
 
 
 def main():
  parser=argparse.ArgumentParser(description=__doc__)
  parser.add_argument('--stock',type=Path,required=True);parser.add_argument('--controls',type=Path,required=True);parser.add_argument('--out',type=Path,required=True)
- args=parser.parse_args();result=create_catalog(args.stock,args.controls,args.out)
+ parser.add_argument('--suite',choices=['legacy','v051'],default='legacy')
+ parser.add_argument('--foundation',type=Path,default=FOUNDATION)
+ parser.add_argument('--photo',type=Path,help='alternate path to the pinned R10-C1 reference WLM')
+ parser.add_argument('--coalesce-records',action=argparse.BooleanOptionalAction,default=True,
+                     help='join adjacent capsule records with identical kind, flags and admission policy')
+ parser.add_argument('--peer-wlms', type=Path, nargs='*',
+                     help='explicit companion WLMs for overlap checks, before the historical corpus default')
+ args=parser.parse_args();result=create_catalog(args.stock,args.controls,args.out,suite=args.suite,
+                                               foundation=args.foundation,photo=args.photo,
+                                               coalesce_records=args.coalesce_records,peer_wlms=args.peer_wlms)
  print(json.dumps(dict(passed=True,components=len(result['components']),selections=len(result['selection_verification']),catalog=str(args.out/'catalog.json'))))
 
 if __name__=='__main__':main()

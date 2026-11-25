@@ -13,8 +13,8 @@
     },
     {
       "path": ".gitignore",
-      "bytes": 360,
-      "sha256": "c4419bba65aa0c317cca0c308fa3db2a324b7847426267e3919299dadc15c6cb"
+      "bytes": 403,
+      "sha256": "4ce847504366452bba38e725672cf9c17fd2bfab7794b3ef2ac13597912597b4"
     },
     {
       "path": "AGENTS.md",
@@ -43,8 +43,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3476,
-      "sha256": "ac4ffd743a0f5b0bd99ac04eba025dafdc4dfa71d54e1ea148db6dc062f6ea0d"
+      "bytes": 2943,
+      "sha256": "3cf888234d5817bd3da83d6f775d89a90128612ad3e0d77e1ea7f22edded5a7d"
     },
     {
       "path": "Start-Z8-Debug.cmd",
@@ -53,8 +53,8 @@
     },
     {
       "path": "Z8-PORT-INVENTORY.json",
-      "bytes": 70685,
-      "sha256": "8d2ca3a2b97eaf8d3f7f6ff2534aea3044d35e28b7f4a2af5c4361b7f4f50463"
+      "bytes": 71957,
+      "sha256": "3abe18580cd2052df451fcda8217c7942e953f46978b225fec749f2fc2595c8e"
     },
     {
       "path": "docs/api-reference.md",
@@ -152,6 +152,11 @@
       "sha256": "e3953daa65ec81d0a5c41c1be0354c782410668418d3e538e7fe2e0dc78cd80a"
     },
     {
+      "path": "docs/releases/wlm-current-20261126.md",
+      "bytes": 2695,
+      "sha256": "b548f41fb82cff977fc54d50d13d84d315957307e1bfa48683ef35ad47a466aa"
+    },
+    {
       "path": "docs/repacker.md",
       "bytes": 8191,
       "sha256": "f4ad5e2423042fbe4fcdbeaac114112659d697db442eb44e35992f2047ca7d48"
@@ -162,9 +167,14 @@
       "sha256": "42127e45656d70bf7356d95ff46153ab9f2c1a4579ae735d005617916a528959"
     },
     {
+      "path": "docs/wlm-current-build.zh-CN.md",
+      "bytes": 4017,
+      "sha256": "6c565648fd225b27d65378900713c5d64fd1ead1108642f4a3cb440ea7fe47dd"
+    },
+    {
       "path": "docs/z8-build.zh-CN.md",
-      "bytes": 6932,
-      "sha256": "e10bcbd177e53ee6eb8ee56bd4fe71974b9be2ffa5d9ba338829dc61a6f85f40"
+      "bytes": 5685,
+      "sha256": "b7ea40817763457319f8c737d1a47409626f65f2e505bd4ace46ee8405929394"
     },
     {
       "path": "docs/z8-sdk.md",
@@ -208,8 +218,8 @@
     },
     {
       "path": "examples/framing/module.c",
-      "bytes": 6501,
-      "sha256": "39690fa557a72547a9af1fc65603d05188bc3a662fac6f5b7e37df2454ecf296"
+      "bytes": 7337,
+      "sha256": "a36cdce54a02e11a03818c87f3aab990a6025e2fe264c9e024c08e3eeda0e2df"
     },
     {
       "path": "examples/h265/module.c",
@@ -238,8 +248,8 @@
     },
     {
       "path": "examples/prores/module.c",
-      "bytes": 5037,
-      "sha256": "cc4d3d379c5f9c9bdf8f3cf8d7fbb3b1dff96f513a053ee9f6bde7f476988ca5"
+      "bytes": 5027,
+      "sha256": "c346fbeaef56d794d1d22d75ea5bb0f4d57ddbd06b9e75600e847cb3864b8f11"
     },
     {
       "path": "examples/video_setting/module.inc",
@@ -283,8 +293,8 @@
     },
     {
       "path": "host/build_wlm_native_components.py",
-      "bytes": 16932,
-      "sha256": "9de3a4f4160442d644a544b27faa0c692c0faa6179998898d8ec45ab18b49da2"
+      "bytes": 24245,
+      "sha256": "102df69bcad3daaee153aabeb6cf19fce9396036e387d5165b4c8ef4ecd820b2"
     },
     {
       "path": "host/build_z8_card_wav.py",
@@ -318,13 +328,13 @@
     },
     {
       "path": "host/build_z8_photo_menu.py",
-      "bytes": 37647,
-      "sha256": "fcdb05a183ee38ee9902ee6fc083ac42ae5ed2af71f00e185587d0d817e3f2bb"
+      "bytes": 37841,
+      "sha256": "2b4af70da9f48627f92f9f17128de66bbc9e5f06aef3335a0ddac86eedc718c4"
     },
     {
       "path": "host/build_z8_portrait_video.py",
-      "bytes": 6368,
-      "sha256": "e96847eb09f264bd96a26ee9057eb5f197bab4f688dde31e5728d7a39aa1f149"
+      "bytes": 8637,
+      "sha256": "8ed2c1b2d793c9d5db433ccae4b76dec65c03193ab14bfa21175c24c32a92c44"
     },
     {
       "path": "host/build_z9_core.py",
@@ -370,6 +380,11 @@
       "path": "host/displaced.py",
       "bytes": 1115,
       "sha256": "b85a2281c7aea03028fd607f72aab07f7195d07ee8d757c5dfa40b1a41a984b4"
+    },
+    {
+      "path": "host/fxlog.py",
+      "bytes": 11455,
+      "sha256": "289c9b160ddb600677a65c385d6163adcb855071f0c4f763db4b4d26b1a9d9df"
     },
     {
       "path": "host/generate_scene_font.py",
@@ -423,13 +438,13 @@
     },
     {
       "path": "host/package_wlm_native_components.py",
-      "bytes": 8403,
-      "sha256": "46992c6e371cf3eb7e43ebd1b48815e2c964d7966fae052af42a6647adcf8c83"
+      "bytes": 11093,
+      "sha256": "78863537a5afda9c4df396cf5d592eb1e4919157ad96bf2f6aa16da07a6cfe50"
     },
     {
       "path": "host/package_z8_wlm_plugins.py",
-      "bytes": 4159,
-      "sha256": "533d0d486b17f3eb5d120ad3f476bb94015dfdbb64135215277728a2043726f2"
+      "bytes": 3542,
+      "sha256": "f99e7ac0d782526fef0fab5445be986aaf84d68bf58a1de8ec221da4496192c6"
     },
     {
       "path": "host/platform_profiles.py",
@@ -522,6 +537,11 @@
       "sha256": "f31b5bc105610c03f305a7e103182a11e3882b598264664a30708bc4a839c6d0"
     },
     {
+      "path": "host/repack_wlm_records.py",
+      "bytes": 4383,
+      "sha256": "815428b7bd4348362575d4de3bf81453d987d5762c162629fb792b661233a439"
+    },
+    {
       "path": "host/target_c110.py",
       "bytes": 2236,
       "sha256": "768e929c0f8275da57f162f15314fb086af11ea7eb7c32cc7f18f5cfe1487078"
@@ -588,8 +608,13 @@
     },
     {
       "path": "host/wlm_native.py",
-      "bytes": 11119,
-      "sha256": "dfa064360f22b47b4d1ed3e10ab3d4896b417669fc930d4e0976891528a4c0f0"
+      "bytes": 11397,
+      "sha256": "6e2372ca1a00131689b2c60e45b9f630ea674c4170b210a47ef2bcc997167c3f"
+    },
+    {
+      "path": "host/wlm_record_coalesce.py",
+      "bytes": 9079,
+      "sha256": "8396b7c97c4fa73192ece330af33bedea87e8566785c5b3785172d578f73afe0"
     },
     {
       "path": "host/workbench_bridge.py",
@@ -627,9 +652,14 @@
       "sha256": "0165f348ed75f2ec8c92decf3a01b36684fdacbd01de0440b2066b602ca8e96c"
     },
     {
+      "path": "host/z8_feature_suite_v051.py",
+      "bytes": 4770,
+      "sha256": "8d1671768e55791424b75389a6599b0408cc3aef72da99ba15d2c729236ec832"
+    },
+    {
       "path": "host/z8_framing_profile.py",
-      "bytes": 1785,
-      "sha256": "4ae532f261a37039c2827096d54db17c1db8c30699808a0fe8657541316df7ab"
+      "bytes": 3023,
+      "sha256": "ad70d6a3f237ee55a42cf13ebce14e227abb1b9c491afefd2cde11c6fb20d036"
     },
     {
       "path": "host/z8_full_correspondence.py",
@@ -648,8 +678,8 @@
     },
     {
       "path": "host/z8_native_capsule.py",
-      "bytes": 49894,
-      "sha256": "9ae0960105b14b750d4da7f6b0ed6dac0fec956166f5102728d3e12d218d0b17"
+      "bytes": 52619,
+      "sha256": "d5a467006c517c20e8dc2c9f775151ee3bf11dae6d897b90e798f05fe5142af4"
     },
     {
       "path": "host/z8_native_profile.py",
@@ -658,8 +688,8 @@
     },
     {
       "path": "host/z8_photo_tools_profile.py",
-      "bytes": 1305,
-      "sha256": "bad0b7e4570b2344b8824994ebe27640547f79195fae7b9b595b96b2b54f2b7c"
+      "bytes": 2269,
+      "sha256": "9ac1464e04b203d36e6a03a65934369107f7b3ad08bc0023e47d9869fb7e1f58"
     },
     {
       "path": "host/z8_port.py",
@@ -688,8 +718,23 @@
     },
     {
       "path": "host/z8_wlm_native_recipes.py",
-      "bytes": 12884,
-      "sha256": "dfc6befecbdc5619d6be6a53a830af8b50cbfd4e4b0d67d9b2f157606a9a5fad"
+      "bytes": 27380,
+      "sha256": "c2d8a051fac2111a1e6f11208b9d4bc7ac9f2db29f88c2416a39cc60812f21a0"
+    },
+    {
+      "path": "host/z8_wlm_photo_v051.py",
+      "bytes": 17681,
+      "sha256": "7113661bb8a87fa6b5cf91a5adf56fd4a7691d20aa81f778fc161b5b80964841"
+    },
+    {
+      "path": "host/z8_wlm_v051_locale.py",
+      "bytes": 6159,
+      "sha256": "ffb44a4d5fd5c5c03f8ae0fcb121de51a5e56fcffa463d78e2d12bcdc37a0c8a"
+    },
+    {
+      "path": "host/z8_wlm_v051_validation.py",
+      "bytes": 9331,
+      "sha256": "5b8b115e1551bee321a5dbaac60a831fa0e270527d0d5a998e69882709f95081"
     },
     {
       "path": "host/z9_update_codec.py",
@@ -908,8 +953,13 @@
     },
     {
       "path": "include/fenestra_framing.h",
-      "bytes": 1702,
-      "sha256": "203a774a45c61153019282fb26e09c557d938349f3df33b797d15200b0a0e7f0"
+      "bytes": 2372,
+      "sha256": "fbf5691d49f18f79469b238f0b416edf574a7fab18d4e8244e5573c22e28aaa7"
+    },
+    {
+      "path": "include/fenestra_fxlog.h",
+      "bytes": 7184,
+      "sha256": "12e57a16fb659c338885a835fa95b24d412ac57b9a1ec85744840a1120064201"
     },
     {
       "path": "include/fenestra_hooks.h",
@@ -1173,8 +1223,8 @@
     },
     {
       "path": "include/fenestra_photo_tools.h",
-      "bytes": 2315,
-      "sha256": "0a8a42c4afce4d7847dfc7d403bab030d1ba2d04f1f6a621d31667ef6880dc15"
+      "bytes": 2589,
+      "sha256": "b14ea87146ac46f555700ae5db1cd91d1e28dff4ac0d7e9ef1e434d022fb2c36"
     },
     {
       "path": "include/fenestra_platform.h",
@@ -1458,8 +1508,8 @@
     },
     {
       "path": "modules/jpeg_lut/smp.c",
-      "bytes": 13628,
-      "sha256": "84eb3461eaebe5530951452a3edda9a61cfb08676d663284bc86f5046dd905d6"
+      "bytes": 14020,
+      "sha256": "db2fad6335df027819eee764aa493c5bcbc8c9f946c399ff9cae9a214f140979"
     },
     {
       "path": "modules/jpeg_lut/smp.h",
@@ -1533,8 +1583,8 @@
     },
     {
       "path": "modules/photo_tools/r10/module.c",
-      "bytes": 10329,
-      "sha256": "a5d53c2278952dc9127d410b55e3c7398c61bcdbbddba9146dba103c94aaaaa1"
+      "bytes": 8849,
+      "sha256": "517c3bf23c231e7196f79606444ae229684fa0ff694cefad29f2cadd98ffab45"
     },
     {
       "path": "modules/photo_tools/r10/precapture.c",
@@ -1553,13 +1603,13 @@
     },
     {
       "path": "modules/portrait_video/native.c",
-      "bytes": 5970,
-      "sha256": "0a7cd0f1975051ddef70501c8317fc6f303f1775d8cb43c6344c3500f527eeaf"
+      "bytes": 7218,
+      "sha256": "8007790e970bfa1dd704bc2cfb7577d85e1b1ef5222e07a3467de81a35f572f9"
     },
     {
       "path": "modules/portrait_video/native.ld",
-      "bytes": 380,
-      "sha256": "13b85384edc1c541c167da4764959d61ceda2444cfd5ab00735b4ff214cf9122"
+      "bytes": 609,
+      "sha256": "8e6d34460b39644b89162c18b8a81f8ddf224d3715201a8cda1ed17fa27a9196"
     },
     {
       "path": "nativepacks/feature_controls/README.md",
@@ -1633,18 +1683,23 @@
     },
     {
       "path": "nativepacks/wlm_controls/backend.c",
-      "bytes": 12932,
-      "sha256": "e4ed72f000bf1508e72e72b2843f2b48793dc4cc96f72cb882e81819750cdb14"
+      "bytes": 13615,
+      "sha256": "c24630a34a4944b8762200907edc7aa56597100718cb8d9ee2591000ab0a746c"
     },
     {
       "path": "nativepacks/wlm_controls/build.py",
-      "bytes": 11869,
-      "sha256": "729d2d3c79a71dc560fd2dd1dfffaa9caf70a312baf1cfc624e663e75794f1b6"
+      "bytes": 12844,
+      "sha256": "88a2ad7291ad328da4303b7b3d80fd6b7d547f2329babe41ec23c77c9e4459cd"
+    },
+    {
+      "path": "nativepacks/wlm_controls/controls-legacy.ld",
+      "bytes": 597,
+      "sha256": "09d7a12bb828ced522f827b87776c17af5f2b050c54404b5ab9709de9d7f2ba9"
     },
     {
       "path": "nativepacks/wlm_controls/controls.ld",
-      "bytes": 597,
-      "sha256": "09d7a12bb828ced522f827b87776c17af5f2b050c54404b5ab9709de9d7f2ba9"
+      "bytes": 635,
+      "sha256": "1ae7ec4e227e3d4c93b708eef7bcdb0cc18bff20102fb2e49d7b964f5e3cde37"
     },
     {
       "path": "nativepacks/wlm_controls/hooks.S",
@@ -1753,8 +1808,8 @@
     },
     {
       "path": "scripts/prepare_z8_feature_toolkit.py",
-      "bytes": 1972,
-      "sha256": "32ee8dd2d2f1506ab386dc87a33cc73f19ef45edb65e3aaa4be7430f8f3401d3"
+      "bytes": 2588,
+      "sha256": "7443174a19de006c1e4d80c89932d65d1c89d371c2567cc6914e3ae26da5310e"
     },
     {
       "path": "src/accounting.c",
@@ -1803,8 +1858,8 @@
     },
     {
       "path": "src/framing.c",
-      "bytes": 3552,
-      "sha256": "802d943544d2b4b4f6c0611a798f2120e5b9a45ca22c2fc1f9429568b8d5c42d"
+      "bytes": 4155,
+      "sha256": "abe9010384afbb82e165c84fcd48fcde1f8557c942d98ec1f0164334845227c6"
     },
     {
       "path": "src/hooks.c",
@@ -2028,8 +2083,8 @@
     },
     {
       "path": "src/photo_tools.c",
-      "bytes": 4461,
-      "sha256": "346c59950cfa1442fa1dc729ad7cc686dd5bd8f95ec3bf4a21e7fd51ee1e55dd"
+      "bytes": 4484,
+      "sha256": "8880c08e2ec67f39f8b786a2258b67011e7493111843fe317dbe0918737a4994"
     },
     {
       "path": "src/platform.c",
@@ -3335,6 +3390,11 @@
       "path": "vendor/NikonFirmwarePatch-container/z8prores/package.py",
       "bytes": 5695,
       "sha256": "2f24ea0214ca7e8bae044f91a4ba2980bc4e6471bb47b75d5afe1bdfcc42cd29"
+    },
+    {
+      "path": "vendor/NikonFirmwarePatch-features-v051.lock.json",
+      "bytes": 23183,
+      "sha256": "74787fbf4724fc2802b397750d40ed3dba22236b68882c39db9cfedbabd7306a"
     },
     {
       "path": "vendor/NikonFirmwarePatch-features.lock.json",

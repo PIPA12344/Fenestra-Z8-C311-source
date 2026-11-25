@@ -1,6 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 #include "fenestra_native_pack.h"
 #include "fenestra_native_locale.h"
+#ifdef PORTRAIT_FXLOG
+#include "fenestra_fxlog.h"
+
+FXLOG_DEFINE("portrait_video", 6, 64, 3, PORTRAIT_BUILD_ID, 2);
+
+enum {
+    SAMPLE_BEAT, CLOSE_BEAT, MATRIX_BEAT,
+};
+enum {
+    SAMPLE_STOCK = 1, SAMPLE_TAGGED, SAMPLE_FULL,
+};
+enum {
+    MATRIX_NO_POSE = 1, MATRIX_STOCK_CHECK_FAILED, MATRIX_CLOCKWISE, MATRIX_COUNTERCLOCKWISE,
+};
+#endif
 
 #define OPEN UINT32_C(0x80000000)
 #define COUNT_MASK (OPEN - 1u)
@@ -83,15 +98,27 @@ static void capture(uintptr_t writer) {
     /* Video-mode samples from the C3.11 workbench: grip up = 1, grip down = 2. */
     uintptr_t tagged = (pose == 1u || pose == 2u) ? writer | pose : 0u;
     _Atomic uintptr_t *slot = find_writer(writer);
+#ifdef PORTRAIT_FXLOG
+    unsigned stage = tagged ? SAMPLE_TAGGED : SAMPLE_STOCK;
+#endif
     if (slot) {
         atomic_store_explicit(slot, tagged, memory_order_release);
     } else if (tagged) {
-        for (unsigned i = 0; i < WRITERS; ++i) {
+        unsigned i;
+        for (i = 0; i < WRITERS; ++i) {
             uintptr_t empty = 0u;
             if (atomic_compare_exchange_strong_explicit(&writers[i], &empty, tagged,
                     memory_order_release, memory_order_relaxed)) break;
         }
+#ifdef PORTRAIT_FXLOG
+        if (i == WRITERS) stage = SAMPLE_FULL;
+#endif
     }
+#ifdef PORTRAIT_FXLOG
+    fxlog_beat(SAMPLE_BEAT, stage);
+    if (stage == SAMPLE_FULL) FXLOG_W("sample: writer table full, pose=%u", pose);
+    else FXLOG_I("sample: pose=%u stage=%u", pose, stage);
+#endif
 }
 
 /* Called before every video sample is counted. The movie recorder takes its
@@ -107,6 +134,10 @@ void fx_portrait_forget(uintptr_t writer) {
     if (!writer || (writer & 3u) || !enter()) return;
     _Atomic uintptr_t *slot = find_writer(writer);
     if (slot) atomic_store_explicit(slot, 0u, memory_order_release);
+#ifdef PORTRAIT_FXLOG
+    fxlog_beat(CLOSE_BEAT, slot ? 1u : 2u);
+    FXLOG_I("close: tracked=%u", slot != 0);
+#endif
     leave();
 }
 
@@ -114,6 +145,9 @@ void fx_portrait_matrix(uintptr_t writer, uint8_t *matrix, uint32_t width, uint3
     if (!writer || (writer & 3u) || !matrix || !width || !height ||
             width > 32767u || height > 32767u || !enter()) return;
     _Atomic uintptr_t *slot = find_writer(writer);
+#ifdef PORTRAIT_FXLOG
+    unsigned stage = MATRIX_NO_POSE;
+#endif
     if (slot) {
         unsigned pose = (unsigned)(atomic_load_explicit(slot, memory_order_relaxed) & 3u);
         /* The caller's 36-byte buffer is the stock v0 video tkhd identity.
@@ -121,9 +155,17 @@ void fx_portrait_matrix(uintptr_t writer, uint8_t *matrix, uint32_t width, uint3
          * 2.30 fields in big endian. Translation keeps the origin onscreen. */
         for (unsigned i = 0; i < 36u; ++i) {
             unsigned expected = i == 1u || i == 17u ? 1u : i == 32u ? 64u : 0u;
-            if (matrix[i] != expected) goto done;
+            if (matrix[i] != expected) {
+#ifdef PORTRAIT_FXLOG
+                stage = MATRIX_STOCK_CHECK_FAILED;
+#endif
+                goto done;
+            }
         }
         if (pose == 1u || pose == 2u) {
+#ifdef PORTRAIT_FXLOG
+            stage = pose == 2u ? MATRIX_CLOCKWISE : MATRIX_COUNTERCLOCKWISE;
+#endif
             uint32_t words[8] = {0u, 0x10000u, 0u, 0xffff0000u, 0u, 0u, height << 16, 0u};
             if (pose == 1u) {
                 words[1] = 0xffff0000u;
@@ -141,5 +183,9 @@ void fx_portrait_matrix(uintptr_t writer, uint8_t *matrix, uint32_t width, uint3
         }
     }
 done:
+#ifdef PORTRAIT_FXLOG
+    fxlog_beat(MATRIX_BEAT, stage);
+    FXLOG_I("tkhd: stage=%u %ux%u", stage, width, height);
+#endif
     leave();
 }

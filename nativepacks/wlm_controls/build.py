@@ -20,6 +20,8 @@ DEPENDENCIES = {
     'h265': ('controls.dependency.tier_republish.h265', 0x40a41250, 'quality', 'tier_star_republish'),
     'framing': ('controls.movie_close_original.framing', 0x40960870, 'opengate', 'writer_close_hook'),
     'photo_tools': ('controls.dependency.psm_worker.photo_tools', 0x409a44cc, 'pixelshift', 'psm_worker')}
+V051_DEPENDENCIES = {**DEPENDENCIES,
+    'photo_tools': ('controls.dependency.psm_worker.photo_tools', 0x409a4550, 'pixelshift', 'psm_worker')}
 
 def sha(data): return hashlib.sha256(data).hexdigest()
 
@@ -50,7 +52,7 @@ def validate_locale(locale):
     for name in ('offsets_directory','pools_directory'):
         if not 0<locale[name]<2**64 or locale[name]%8: raise ValueError('unaligned locale directory')
 
-def build(component, out, llvm, locale=None):
+def build(component, out, llvm, locale=None, *, suite='legacy'):
     out.mkdir(parents=True,exist_ok=True)
     def tool(name):
         path=llvm/(name+('.exe' if sys.platform=='win32' else ''))
@@ -58,9 +60,17 @@ def build(component, out, llvm, locale=None):
         return str(path)
     cc,ld,nm=(tool(n) for n in ('clang','ld.lld','llvm-nm'))
     bit=FEATURES.get(component,0);base=BASES[component]
-    metadata_path=ROOT/'vendor/NikonFirmwarePatch-features/resources/compiled.json'
+    if suite not in ('legacy','v051'): raise ValueError('unknown native controls suite')
+    if suite=='v051':
+        from z8_feature_suite_v051 import VENDOR,COMPILED_SHA256
+        metadata_path=VENDOR/'resources/compiled.json'
+        dep=V051_DEPENDENCIES.get(component)
+    else:
+        from z8_feature_suite import VENDOR,COMPILED_SHA256
+        metadata_path=VENDOR/'resources/compiled.json'
+        dep=DEPENDENCIES.get(component)
     metadata_raw=metadata_path.read_bytes();native=json.loads(metadata_raw)['units']
-    dep=DEPENDENCIES.get(component)
+    if sha(metadata_raw)!=COMPILED_SHA256: raise ValueError('pinned native dependency metadata differs')
     if dep and int(native[dep[2]]['symbols'][dep[3]]['va'],0)!=dep[1]: raise ValueError('pinned native dependency changed')
     generated=[]
     if bit:
@@ -97,21 +107,22 @@ def build(component, out, llvm, locale=None):
                '-ffreestanding','-fno-builtin','-mgeneral-regs-only','-mstrict-align','-mno-outline-atomics',
                '-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables',
                '-ffunction-sections','-fdata-sections','-I','include','-I','nativepacks/wlm_controls','-I',str(out),
-               '-DFX_FREESTANDING=1','-DFX_WLM_FEATURE='+str(bit)]
+               '-DFX_FREESTANDING=1','-DFX_WLM_FEATURE='+str(bit),'-DFX_WLM_SUITE_V051='+str(int(suite=='v051'))]
         if source.endswith('.S'): flags=['--target=aarch64-none-elf']
         run([cc,*flags,'-MMD','-MF',str(depfile),'-MT','fx_core','-c',source,'-o',str(obj)])
         inputs.update(dependencies(depfile,ROOT));objects.append(str(obj))
     elf_path=out/'controls.elf'
+    linker=PACK+('controls.ld' if suite=='v051' else 'controls-legacy.ld')
     extra=['--undefined=fx_wlm_component_metadata']
     if bit: extra+=['--undefined=fx_wlm_dependency_digest','--undefined=fx_wlm_dependency_count','--undefined=fx_wlm_dependency']
-    run([ld,'-m','aarch64elf','-z','max-page-size=4096','-T',PACK+'controls.ld','--gc-sections',
+    run([ld,'-m','aarch64elf','-z','max-page-size=4096','-T',linker,'--gc-sections',
          '--defsym=fx_wlm_base='+hex(base),'--defsym=fx_native_pack_entry='+entry_name,
          '--defsym=fx_native_pack_feature_mask='+str(bit),*extra,*objects,'-o',str(elf_path)])
     elf=elf_path.read_bytes();entry,segments=load_segments(elf,base)
     symbols={p[2]:int(p[0],16) for line in subprocess.check_output([nm,'--defined-only','--extern-only',str(elf_path)],text=True).splitlines() if len(p:=line.split())==3}
     for i,segment in enumerate(segments):
         name='controls.segment'+str(i)+'.bin';start=segment['file_offset'];(out/name).write_bytes(elf[start:start+segment['file_bytes']]);segment['file']=name
-    inputs.update([PACK+'build.py',PACK+'controls.ld','vendor/NikonFirmwarePatch-features/resources/compiled.json'])
+    inputs.update([PACK+'build.py',linker,metadata_path.relative_to(ROOT).as_posix()])
     if bit:
         exports=[dict(name='controls.movie_open.'+component,version=1,flags=1,address=symbols['fx_wlm_movie_open']),dict(name='controls.movie_close.'+component,version=1,flags=1,address=symbols['fx_wlm_movie_close'])]
         if dep: exports.append(dict(name=dep[0],version=1,flags=1,address=dep[1]))
@@ -119,7 +130,7 @@ def build(component, out, llvm, locale=None):
         exports=[dict(name='controls.video_open_hook',version=1,flags=1,address=symbols['fx_wlm_video_open_hook']),dict(name='controls.video_close_hook',version=1,flags=1,address=symbols['fx_wlm_video_close_hook'])]
     else: exports=[dict(name='camera.locale.text',version=1,flags=2,address=symbols['fx_wlm_locale'])]
     providers=[] if not bit else [dict(name={'framing':'camera.video.framing','prores':'camera.video.prores','h265':'camera.video.h265','log_colour':'camera.video.log_colour','photo_tools':'camera.photo.tools'}[component],version=1)]
-    result=dict(schema=1,abi=1,component=component,component_id=(component if bit else 'shared.'+('movie' if component=='bridge' else 'locale')),
+    result=dict(schema=1,abi=1,suite=suite,component=component,component_id=(component if bit else 'shared.'+('movie' if component=='bridge' else 'locale')),
                 exports=exports,providers=providers,kind='control' if bit else 'shared',features=bit,features5=bit,feature_bits=FEATURES,
                 fixed_base=base,limit=base+65536,entry=entry,stage_rank=rank,
                 dependencies=[] if not dep else [dict(name=dep[0],version=1,address=dep[1])],
@@ -135,16 +146,22 @@ def build(component, out, llvm, locale=None):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--component',choices=['all',*BASES],default='all')
+    parser.add_argument('--suite',choices=['legacy','v051'],default='legacy')
     parser.add_argument('--out',type=Path,required=True);parser.add_argument('--llvm',type=Path,default=LLVM)
     parser.add_argument('--text-count',type=lambda v:int(v,0));parser.add_argument('--languages',type=int,default=36)
     parser.add_argument('--offsets-directory',type=lambda v:int(v,0));parser.add_argument('--pools-directory',type=lambda v:int(v,0))
     args=parser.parse_args();out=args.out.resolve()
     locale=None
     if args.component=='locale':
-        if any(v is None for v in (args.text_count,args.offsets_directory,args.pools_directory)): parser.error('locale requires --text-count, --offsets-directory and --pools-directory')
-        locale=dict(languages=args.languages,text_count=args.text_count,offsets_directory=args.offsets_directory,pools_directory=args.pools_directory)
+        fields=(args.text_count,args.offsets_directory,args.pools_directory)
+        if args.suite=='v051' and all(v is None for v in fields):
+            from z8_wlm_native_recipes import V051_LOCALE
+            locale=V051_LOCALE
+        else:
+            if any(v is None for v in fields): parser.error('locale requires --text-count, --offsets-directory and --pools-directory')
+            locale=dict(languages=args.languages,text_count=args.text_count,offsets_directory=args.offsets_directory,pools_directory=args.pools_directory)
     names=[*FEATURES,'bridge'] if args.component=='all' else [args.component]
-    results=[build(name,out/name if args.component=='all' else out,args.llvm,locale) for name in names]
+    results=[build(name,out/name if args.component=='all' else out,args.llvm,locale,suite=args.suite) for name in names]
     if args.component=='all':
         (out/'catalog.json').write_text(json.dumps(dict(schema=1,components=[dict(component=r['component'],component_id=r['component_id'],features5=r['features5'],metadata=r['component']+'/controls.json',elf_sha256=r['elf_sha256']) for r in results]),indent=2)+'\n',encoding='utf-8')
     print(json.dumps(dict(passed=True,components=[dict(component=r['component'],features5=r['features5'],entry=hex(r['entry']),elf_sha256=r['elf_sha256']) for r in results]),indent=2))

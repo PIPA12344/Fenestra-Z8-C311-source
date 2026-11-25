@@ -20,3 +20,5 @@ releases/*.zip
 *.img
 *.raw
 *.log
+
+/vendor/NikonFirmwarePatch-features-v051/

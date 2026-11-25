@@ -44,6 +44,41 @@ CODE_AREAS=((0x40951000,0x40951538),(0x40960000,0x40962d30),
     (0x409f0000,0x409f847d),(0x40a00000,0x40a00608),
     (0x40a10000,0x40a10800),(0x40a41000,0x40a4168c),
     (0x40b00000,0x40b00aa8))
+# v0.5.1 recipe IMAGE pages, independent of the fixed-slot ELF segments.
+# Literal pools embedded in prebuilt native routines stay with those routines.
+V051_CODE_AREAS = (
+    (0x40951000, 0x40952000), (0x40960000, 0x40969000),
+    (0x40970000, 0x40971000), (0x40980000, 0x40981000),
+    (0x40990000, 0x409B0000), (0x409D8000, 0x409D9000),
+    (0x409F0000, 0x409FB000), (0x409FC000, 0x409FD000),
+    (0x40A00000, 0x40A01000), (0x40A10000, 0x40A11000),
+    (0x40A41000, 0x40A42000), (0x40B00000, 0x40B01000),
+    (0x40B82000, 0x40B83000), (0x40B84000, 0x40B85000),
+    (0x40BA0000, 0x40BA2000), (0x40BA4000, 0x40BA7000),
+    (0x40BA8000, 0x40BA9000), (0x40BAA000, 0x40BAB000),
+)
+V051_READONLY_AREAS = (
+    (0x408C0000, 0x408C6000), (0x40953000, 0x40955000),
+    (0x40957000, 0x40958000), (0x40974000, 0x40976000),
+    (0x40981000, 0x40982000), (0x409DA000, 0x409DB000),
+    (0x409EC000, 0x409ED000), (0x40A01000, 0x40A02000),
+    (0x40A12000, 0x40A14000), (0x40A20000, 0x40A24000),
+    (0x40A30000, 0x40A32000), (0x40A40000, 0x40A41000),
+    (0x40A50000, 0x40AF0000), (0x40B08000, 0x40B0B000),
+    (0x40B10000, 0x40B11000), (0x40B20000, 0x40B45000),
+    (0x40B48000, 0x40B49000), (0x40B80000, 0x40B81000),
+    (0x40B90000, 0x40B93000), (0x40B95000, 0x40B97000),
+    (0x40BA2000, 0x40BA3000), (0x40BA7000, 0x40BA8000),
+    (0x40BA9000, 0x40BAA000),
+)
+V051_WRITABLE_AREAS = (
+    (0x409FD000, 0x409FE000), (0x40B50000, 0x40B52000), (0x40BD0000, 0x40BD1000),
+)
+V051_ARENA_PERMISSIONS = {
+    **{span: EXEC for span in V051_CODE_AREAS},
+    **{span: 0 for span in V051_READONLY_AREAS},
+    **{span: WRITE for span in V051_WRITABLE_AREAS},
+}
 MOV_HOOKS={0x40cebe3c:'fx_controls_video_open_hook',
            0x40ceef10:'fx_controls_video_close_hook'}
 NATIVE_EXPORTS=(('framing.opengate.writer_close_hook',1,'opengate','writer_close_hook'),
@@ -362,7 +397,7 @@ def _recipe(stock,mask):
 
 
 
-def derive_native_text(stock,upstream,rows):
+def derive_native_text(stock,upstream,rows,*,shared_tables=False):
     # This is the offset-table bound, not the native accepted-ID limit. The
     # latter is shared with font/attribute lookups and the core namespace.
     count_address=0xa0281cd5c
@@ -375,36 +410,50 @@ def derive_native_text(stock,upstream,rows):
     if not original_stride or original_stride%4 or any(p!=original_directories[0]+i*original_stride for i,p in enumerate(original_directories)):
         raise ValueError('original 36-language text table stride differs')
     stock_count=original_stride//4-1
+    directories=struct.unpack_from('<36Q',upstream,0x311c5a0)
+    original_pools=struct.unpack_from('<36Q',stock,0x387af58)
+    pool_directories=struct.unpack_from('<36Q',upstream,0x387af58) if shared_tables else original_pools
+    table_count=len(set(directories)) if shared_tables else 36
     tables=[r for r in rows if r['purpose']=='shared 36 language offset tables']
     pools=[r for r in rows if r['purpose']=='shared selected-feature strings']
-    if len(tables)!=1 or len(pools)!=1 or tables[0]['bytes']%(36*4):
+    if len(tables)!=1 or len(pools)!=1 or tables[0]['bytes']%(table_count*4):
         raise ValueError('shared native text tables/pool are not one exact 36-language bank')
     table_offset=int(tables[0]['offset'],0);pool_offset=int(pools[0]['offset'],0)
-    entries=tables[0]['bytes']//(36*4);count=entries-1;stride=entries*4
+    entries=tables[0]['bytes']//(table_count*4);count=entries-1;stride=entries*4
     if not stock_count<count<65536:raise ValueError('derived native text count outside supported width')
+    expected=tuple(BASE+table_offset+i*stride for i in range(table_count))
+    if shared_tables:
+        if set(directories)!=set(expected) or any(p not in original_pools for p in pool_directories):
+            raise ValueError('v0.5.1 language bank alias escapes its stock pool or shared table')
+    elif directories!=expected:
+        raise ValueError('native text directory stride differs')
     for language in range(36):
-        directory=0x311c5a0+language*8
-        address=struct.unpack_from('<Q',upstream,directory)[0]
-        if address!=BASE+table_offset+language*stride:raise ValueError('native text directory stride differs')
-        original_table=struct.unpack_from('<Q',stock,directory)[0]-BASE
-        original_pool=struct.unpack_from('<Q',stock,0x387af58+language*8)[0]-BASE
-        at=address-BASE
+        original_table=original_directories[language]-BASE
+        pool=pool_directories[language]-BASE
+        at=directories[language]-BASE
         prefix=(stock_count+1)*4
         if upstream[at:at+prefix]!=stock[original_table:original_table+prefix]:
             raise ValueError('native original text offset prefix differs')
+        if shared_tables and pool_directories[language]!=original_pools[language]:
+            first=struct.unpack_from('<i',stock,original_table)[0]
+            last=struct.unpack_from('<i',stock,original_table+4*stock_count)[0]
+            original_pool=original_pools[language]-BASE
+            if stock[pool+first:pool+last]!=stock[original_pool+first:original_pool+last]:
+                raise ValueError('v0.5.1 language bank alias changes stock pool bytes')
         # Slot stock_count is the original endpoint/spacer. New translated
         # strings begin at stock_count+1; every new endpoint is inside the
         # actual shared selected-feature UTF-16 pool, not an inferred address.
         for ident in range(stock_count+1,count):
             start,stop=struct.unpack_from('<ii',upstream,at+ident*4)
-            start+=original_pool;stop+=original_pool
+            start+=pool;stop+=pool
             if not pool_offset<=start<=stop<=pool_offset+pools[0]['bytes'] or (stop-start)%2:
                 raise ValueError('native selected text endpoint escapes actual string pool')
     info=dict(original_count=original_count,stock_text_count=stock_count,loaded_count=count,languages=36,entries_per_language=entries,
         table_address=hex(BASE+table_offset),table_bytes=tables[0]['bytes'],count_address=hex(count_address),
         offsets_directory=hex(BASE+0x311c5a0),pools_directory=hex(BASE+0x387af58),
         native_acceptance_managed_by_core=True,runtime_count_source='published-font-bank-capacity',
-        derivation='actual selected table byte count, all 36 directory strides, unchanged stock prefixes and in-pool UTF-16 endpoints')
+        derivation=('actual selected table byte count, reviewed 36 directory entries, unchanged stock prefixes and in-pool UTF-16 endpoints'
+                    if shared_tables else 'actual selected table byte count, all 36 directory strides, unchanged stock prefixes and in-pool UTF-16 endpoints'))
     return info
 
 

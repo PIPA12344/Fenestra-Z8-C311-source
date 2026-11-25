@@ -1,4 +1,4 @@
-"""Build the installable Z8 C3.11 LUT preview WLM with its JPEG provider and shooting menu."""
+"""Build the installable Z8 C3.11 Cube LUT WLM with its JPEG provider and shooting menu."""
 
 import argparse
 from contextlib import redirect_stdout
@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
 STOCK_PATH = ROOT / "inputs/z8-c311-main.bin"
 FOUNDATION_PATH = BUILD / "cold-retry3/core/z8-core.main"
-OUTPUT = BUILD / "lut-preview"
+OUTPUT = BUILD / "cube-lut"
 MENU_SOURCE = ROOT / "nativepacks/z8_photo_menu"
 MENU_UNITS = ("photo_entry.S", "photo_journal.c", "photo_catalog.c", "photo_flight.c", "photo_worker.c", "photo_ui.c")
 RELEASE = ROOT / "inputs/r10-c1/photo_tools.wlm"
@@ -219,7 +219,7 @@ def preimages(stock, foundation):
                 hooks=[dict(address=hex(address), bytes=len(old), preimage=old.hex()) for address, old in checks])
 
 
-def parent_tables(foundation, released_patches, selection):
+def parent_tables(foundation, released_patches, selection, *, v051=False):
     photo = bool(selection & BURST)
     patch_view = released_patches if photo else ()
     first_rows = projected(foundation, patch_view, PARENT_ORIG_ROWS, 47 * ROW_BYTES)
@@ -232,10 +232,14 @@ def parent_tables(foundation, released_patches, selection):
     require(first_rows == expected_rows and first_pointers == stock_pointers, "effective parent rows or pointers differ")
     require(unpack("Q", first_pointers, PIXEL_ROW * 8)[0] == PIXEL_EVENT, "Pixel Shift row event pointer differs")
     if photo:
+        from z8_photo_tools_profile import V051_SYMBOLS
+
+        action = V051_SYMBOLS["psm_menu_action"] if v051 else 0x40990000
+        available = V051_SYMBOLS["psm_menu_available"] if v051 else 0x40992240
         for index, event in PARENT_ACTIVATIONS.items():
             on_card = projected(foundation, patch_view, PIXEL_EVENT + index * EVENT_BYTES, EVENT_BYTES)
-            require(unpack("4Q", on_card) == (event, 0x40990000, 0x40992240, 0x1D),
-                    "r10-c1 Pixel Shift activation differs")
+            require(unpack("4Q", on_card) == (event, action, available, 0x1D),
+                    "Pixel Shift activation differs")
         for site, target in ((0xA028E6670, 0x4099017C), (0xA028E6690, 0x409902EC)):
             require(projected(foundation, patch_view, site, 8) == struct.pack("<Q", target),
                     "r10-c1 Photo Shooting Menu callback differs")
@@ -655,7 +659,7 @@ def build(stock_path, foundation_path, photo_path, output, llvm):
     plan, _ = compose_components(photo, target=TARGET, requires_id=REQUIRED)
     released_patches = decode(plan)["patches"]
     output.parent.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(prefix=".lut-preview-", dir=output.parent) as temp:
+    with TemporaryDirectory(prefix=".cube-lut-", dir=output.parent) as temp:
         stage = Path(temp) / "package"
         variants = [compile_menu(stock, foundation, released_patches, llvm, stage / "native" / f"{value:03x}", value)
                     for value in VALUES]
@@ -675,8 +679,8 @@ def build(stock_path, foundation_path, photo_path, output, llvm):
         jpeg = bundle_at(stage / "jpeg/jpeg_lut.wlm")
         providers = [*bundle_components(jpeg), *bundle_components(rear)]
         component_variants([*photo, *providers])
-        package = encode_bundle(rear["frontend"], "lut_preview", [*providers, menu], TARGET)
-        delivered = decode_bundle(package, module_id="lut_preview", target=TARGET)
+        package = encode_bundle(rear["frontend"], "cube_lut", [*providers, menu], TARGET)
+        delivered = decode_bundle(package, module_id="cube_lut", target=TARGET)
         components = bundle_components(delivered)
         require(components == [*providers, menu], "sealed LUT bundle differs from its inputs")
         compositions = {}
@@ -686,7 +690,7 @@ def build(stock_path, foundation_path, photo_path, output, llvm):
                                    **verify_menu_projection(plan, foundation, released_patches, selection)}
         report = dict(package=summary(delivered), stock_sha256=STOCK_SHA256, foundation_sha256=FOUNDATION,
                       photo_tools_sha256=RELEASE_SHA, chinese_glyphs=glyphs, compositions=compositions)
-        (stage / "lut_preview.wlm").write_bytes(package)
+        (stage / "cube_lut.wlm").write_bytes(package)
         (stage / "validation.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         stage.rename(output)
     return report

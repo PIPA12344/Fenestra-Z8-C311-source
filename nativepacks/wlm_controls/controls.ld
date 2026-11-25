@@ -1,9 +1,10 @@
 ENTRY(fx_native_pack_entry)
-PHDRS { code PT_LOAD FLAGS(5); data PT_LOAD FLAGS(6); }
+PHDRS { code PT_LOAD FLAGS(5); ro PT_LOAD FLAGS(4); data PT_LOAD FLAGS(6); }
 SECTIONS {
   . = fx_wlm_base;
   .text : ALIGN(16) { *(.text*) } :code
-  .rodata : ALIGN(16) { *(.rodata*) } :code
+  . = ALIGN(4096);
+  .rodata : ALIGN(16) { *(.rodata*) } :ro
   . = ALIGN(4096);
   .data : ALIGN(16) { *(.data*) } :data
   .bss (NOLOAD) : ALIGN(16) { *(.bss*) *(COMMON) } :data

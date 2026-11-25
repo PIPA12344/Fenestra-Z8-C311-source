@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Framing control panel. Open gate uses the core's complete native menu path.
+ * Framing control panel. Open gate uses Nikon's native menu transactions.
  */
 #include "fenestra_sdk.h"
 #include "fenestra_framing.h"
@@ -15,8 +15,10 @@ static void copy_text(char *out,const char *in,uint32_t bytes){uint32_t i=0u;whi
 static int snapshot(const FxServiceReply *reply) {
     if(reply->bytes!=sizeof(current))return 0;
     FxFramingStatus next;memcpy(&next,reply->data,sizeof(next));
+    uint32_t mode=(next.flags&FX_FRAMING_MODE_3_2_MASK)>>FX_FRAMING_MODE_3_2_SHIFT;
     if(next.abi!=FX_FRAMING_ABI || next.bytes!=sizeof(next) || next.nraw>=4u ||
-       next.desqueeze>=8u || next.open_gate>1u)return 0;
+       next.desqueeze>=8u || next.open_gate>1u ||
+       ((next.capabilities&FX_FRAMING_FILE_TYPE_3_2) && mode>FX_FRAMING_MODE_4K1_24))return 0;
     current=next;return 1;
 }
 static uint32_t editable(uint32_t capability) {
@@ -89,8 +91,18 @@ int fenestra_module_entry(const FxModuleServices *base) {
             text(c.options[0],"关闭");text(c.options[1],"1.25x");text(c.options[2],"1.30x");text(c.options[3],"1.33x");
             text(c.options[4],"1.50x");text(c.options[5],"1.60x");text(c.options[6],"1.80x");text(c.options[7],"2.00x");
         } else if(stage==OPEN_GATE) {
-            text(c.label,current.open_gate?"已选择开放画幅":"开放画幅：相机菜单");
-            text(c.text,"原始画幅：[FX 3:2] 30/25/24p");
+            if(current.capabilities&FX_FRAMING_FILE_TYPE_3_2) {
+                static const char *const modes[]={"视频文件类型 → N-RAW 3:2",
+                    "8256×5504 30p","8256×5504 25p","8256×5504 24p",
+                    "4128×2752 120p","4128×2752 100p","4128×2752 60p",
+                    "4128×2752 50p","4128×2752 30p","4128×2752 25p","4128×2752 24p"};
+                uint32_t mode=(current.flags&FX_FRAMING_MODE_3_2_MASK)>>FX_FRAMING_MODE_3_2_SHIFT;
+                text(c.label,current.open_gate?"N-RAW 3:2 已选择":"N-RAW 3:2 / 相机菜单");
+                text(c.text,modes[mode]);
+            } else {
+                text(c.label,current.open_gate?"已选择开放画幅":"开放画幅：相机菜单");
+                text(c.text,"原始画幅：[FX 3:2] 30/25/24p");
+            }
         } else {
             text(c.label,"状态");
             text(c.text,unavailable?"功能未准备完成":

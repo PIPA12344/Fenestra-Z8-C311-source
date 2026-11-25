@@ -75,7 +75,14 @@ def chunks(data):
    yield data[start:at];start=at;roll=0
  if start<len(data):yield data[start:]
 
-def encode_component(name,version,selector_bit,rank,variants,*,target,requires_id):
+def chunks_at(data,cut_points):
+ start=0
+ for end in (*cut_points,len(data)):
+  if not start<end<=len(data):raise ValueError('component block cuts must be strictly increasing and inside the variant')
+  yield from chunks(data[start:end])
+  start=end
+
+def encode_component(name,version,selector_bit,rank,variants,*,target,requires_id,cut_points=()):
  cid=ident(name)
  if len(target)!=32 or not 0<version<=0xffffffff or selector_bit<0 or selector_bit>0xffffffff or selector_bit and selector_bit&(selector_bit-1)or not 0<=rank<=0xffffffff or not 0<requires_id<1<<64:raise ValueError('component contract')
  if not 1<=len(variants)<=MAX_VARIANTS:raise ValueError('variant count')
@@ -86,7 +93,7 @@ def encode_component(name,version,selector_bit,rank,variants,*,target,requires_i
   parsed=decode_capsule(raw)
   if raw[32:64]!=target or parsed['requires_id']!=requires_id:raise ValueError('capsule target/dependency')
   refs=[]
-  for part in chunks(raw):
+  for part in chunks_at(raw,cut_points):
    key=digest(part);index=block_index.get(key)
    if index is None:
     index=len(blocks);block_index[key]=index;packed=lzss_pack(part);codec=1 if len(packed)<len(part)else 0;blocks.append((part,packed if codec else part,codec))

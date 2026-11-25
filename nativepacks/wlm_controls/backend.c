@@ -71,6 +71,16 @@ static FxResult framing_read(void *context,FxFramingStatus *v){
     if(n>=4u||ap>=8u||og>1u)return FX_INTEGRITY;
     v->capabilities=FX_FRAMING_NRAW_AVAILABLE|FX_FRAMING_DESQUEEZE_AVAILABLE|FX_FRAMING_NATIVE_OPEN_GATE;
     v->flags=busy(s)?FX_FRAMING_RECORDING:0u;v->nraw=grade[n];v->desqueeze=ap;v->open_gate=og;
+#if FX_WLM_SUITE_V051
+    const uint32_t *file_type=(const uint32_t *)(uintptr_t)UINT64_C(0xa03d5c014);
+    const uint32_t *frame_size=(const uint32_t *)(uintptr_t)UINT64_C(0xa03d5c274);
+    const uint32_t *frame_rate=(const uint32_t *)(uintptr_t)UINT64_C(0xa03d5c27c);
+    uint32_t mode=fx_framing_3_2_mode(__atomic_load_n(file_type,__ATOMIC_ACQUIRE),og,
+        __atomic_load_n(frame_size,__ATOMIC_ACQUIRE),__atomic_load_n(frame_rate,__ATOMIC_ACQUIRE));
+    v->capabilities|=FX_FRAMING_FILE_TYPE_3_2;
+    v->open_gate=mode!=FX_FRAMING_MODE_3_2_NONE;
+    v->flags|=mode<<FX_FRAMING_MODE_3_2_SHIFT;
+#endif
     v->rate=s->native_calls?((uint32_t (*)(uint32_t))s->profile.exact_get)(UINT32_C(0x0500125b)):0u;return FX_OK;
 }
 static FxResult framing_write(void *context,uint32_t control,uint32_t value){
@@ -210,6 +220,9 @@ FxResult fx_wlm_pack_entry(const FxNativePackHost *host,FxNativePackExports *out
 #if FX_WLM_FEATURE == FX_WLM_PHOTO_TOOLS
     FxResult dcf=fx_controls_precapture_stage(&s->dcf_subscription,&s->profile);if(dcf!=FX_OK){host->release(host->context,s);return dcf;}
     fx_controls_photo_init(&s->photo,&s->photo_bridge,&s->profile);
+#if FX_WLM_SUITE_V051
+    s->photo.supported|=FX_PHOTO_V051_FEATURES;
+#endif
 #elif FX_WLM_FEATURE == FX_WLM_FRAMING
     fx_framing_init(&s->framing,s,framing_read,framing_write);
 #endif

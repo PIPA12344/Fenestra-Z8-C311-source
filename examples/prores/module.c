@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * ProRes quality extension. Requires camera.video.prores/v1 in the Z8 core.
+ * ProRes 422 quality extension. Requires camera.video.prores/v1.
  */
 #include "fenestra_sdk.h"
 #include "fenestra_prores.h"
@@ -69,11 +69,11 @@ int fenestra_module_entry(const FxModuleServices *base) {
         FxUiControl c={.abi=1u,.bytes=sizeof(c),.id=stage==PAGE?1u:stage==CHOICE?2u:3u,
             .parent=stage==PAGE?0u:1u,.kind=stage==PAGE?FX_UI_PAGE:stage==CHOICE?FX_UI_CHOICE:FX_UI_ACTION,
             .flags=FX_UI_VISIBLE};
-        if(stage==PAGE){c.flags|=FX_UI_ENABLED;text(c.label,"ProRes 品质");}
+        if(stage==PAGE){c.flags|=FX_UI_ENABLED;text(c.label,"ProRes 422 品质");}
         else if(stage==CHOICE) {
             if(editable())c.flags|=FX_UI_ENABLED;
             text(c.label,"品质");c.value=current.selected;c.option_count=4u;
-            text(c.options[0],"HQ（默认）");text(c.options[1],"标准");
+            text(c.options[0],"HQ（默认）");text(c.options[1],"422");
             text(c.options[2],"LT");text(c.options[3],"Proxy");
         } else {
             text(c.label,"状态");

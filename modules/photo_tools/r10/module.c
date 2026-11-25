@@ -5,15 +5,12 @@
 #include "fenestra_sdk.h"
 #include "fenestra_photo_tools.h"
 #include "fenestra_memory.h"
-enum {CONFIGURE,PAGE,OPEN,QUERY,UI,POLL,START,CANCEL,DECLARE,TOPEN,TREAD,TSTORE};
-/* RAW-only rate table: +8 enables FX C40 and +0x34 enables FX C140.
- * The numerators are at +0xc and +0x3c. The capsule starts at stock rates. */
-#define C40_TABLE "photo.c40.rate"
-#define C40_PAGE UINT64_C(0x40b51000)
-static const char c40_marker[8]={'C','4','0','R','A','W','0','3'};
+enum {CONFIGURE,PAGE,OPEN,QUERY,UI,POLL,START,CANCEL};
+/* Existing control IDs stay stable. Native Photo Shooting Menu owns rates. */
+enum {FIRST_CHILD=2,RAW_FORMAT=8,DX_C60=10,SDR_FORMAT,STILL_CROPS,NATIVE_BROWSER};
 static FxSdkClient client;
-static uint32_t stage,ui_id=1u,unavailable,published,armed,mode,revision[12],opened,rate[2],rate_ok,want,want_at;
-static uint64_t binding,table;
+static uint32_t stage,ui_id=1u,unavailable,published,armed,mode,revision[NATIVE_BROWSER+1];
+static uint64_t binding;
 static FxPhotoToolsStatus current,shown;
 /* Copied UI strings are UTF-8. Keep complete codepoints and reserve the full
  * u32/u32 suffix before appending dynamic progress. */
@@ -46,23 +43,33 @@ static const char *state(void){
       case 18:return "暂无完整新组";default:return "文件组或读写错误";}
 }
 static void progress(char out[FX_UI_TEXT]){uint32_t at=0u;append_text(out,current.total?FX_UI_TEXT-22u:FX_UI_TEXT,&at,state());if(current.total){append_text(out,FX_UI_TEXT,&at," ");number(out,FX_UI_TEXT,&at,current.rows);append_text(out,FX_UI_TEXT,&at,"/");number(out,FX_UI_TEXT,&at,current.total);}}
+static uint32_t last_control(void){return current.flags&FX_PHOTO_V051_FEATURES?NATIVE_BROWSER:DX_C60;}
 static void control(FxUiControl *c){
     memset(c,0,sizeof(*c));c->abi=1;c->bytes=sizeof(*c);c->id=ui_id;c->parent=ui_id==1u?0u:1u;
-    c->kind=ui_id==1u?FX_UI_PAGE:(ui_id==3u||ui_id==4u||ui_id==9u||ui_id==11u)?FX_UI_CHOICE:FX_UI_ACTION;c->flags=FX_UI_VISIBLE;
+    c->kind=ui_id==1u?FX_UI_PAGE:(ui_id==3u||ui_id==4u)?FX_UI_CHOICE:FX_UI_ACTION;c->flags=FX_UI_VISIBLE;
     if(ui_id==1u){c->flags|=FX_UI_ENABLED;text(c->label,"照片工具");}
-    else if(ui_id==2u){text(c->label,"RAW 预拍摄");text(c->text,"C15/C30：相机图像品质 / RAW菜单");}
+    else if(ui_id==2u){
+        text(c->label,"RAW 预拍摄");
+        text(c->text,current.flags&FX_PHOTO_C15_C30_RAW_POLICY?"C15/C30：无损禁用，已存转 HE*":"C15/C30：相机图像品质 / RAW菜单");
+    }
     else if(ui_id==3u){if(ready())c->flags|=FX_UI_ENABLED;text(c->label,"合并组");c->value=mode;c->option_count=2;text(c->options[0],"最新未合并组");text(c->options[1],"所有未合并组");}
     else if(ui_id==4u){if(ready())c->flags|=FX_UI_ENABLED;text(c->label,"确认合并");c->value=armed;c->option_count=2u;text(c->options[0],"否");text(c->options[1],"是");}
     else if(ui_id==5u){if(ready()&&armed)c->flags|=FX_UI_ENABLED;text(c->label,"开始合并");text(c->text,"4/8/16/32 FX 无损NEF；保留原片");}
     else if(ui_id==6u){if((current.flags&FX_PHOTO_RUNNING)&&!(current.flags&FX_PHOTO_CANCELLING))c->flags|=FX_UI_ENABLED;text(c->label,"取消合并");}
     else if(ui_id==7u){text(c->label,"合并状态");progress(c->text);}
-    else if(ui_id==9u){text(c->label,"C30 连拍速度");
-        if(rate_ok){c->flags|=FX_UI_ENABLED;c->value=rate[0];c->option_count=2u;text(c->options[0],"30 张/秒");text(c->options[1],"40 张/秒（FX 仅RAW）");}
-        else{c->option_count=1u;text(c->options[0],"不可用");}}
-    else if(ui_id==10u){text(c->label,"DX C60 RAW");text(c->text,"使用相机 C60 档（60 张/秒）");}
-    else if(ui_id==11u){text(c->label,"C120 连拍速度");
-        if(rate_ok){c->flags|=FX_UI_ENABLED;c->value=rate[1];c->option_count=2u;text(c->options[0],"120 张/秒");text(c->options[1],"140 张/秒（仅RAW）");}
-        else{c->option_count=1u;text(c->options[0],"不可用");}}
+    else if(ui_id==DX_C60){text(c->label,"DX C60 RAW");text(c->text,"使用相机 C60 档（60 张/秒）");}
+    else if(ui_id==SDR_FORMAT){
+        if(!(current.flags&FX_PHOTO_SDR_HEIF))c->flags=0u;
+        text(c->label,"SDR JPEG / 10-bit HEIF");text(c->text,"照片拍摄菜单 → 色调模式");
+    }
+    else if(ui_id==STILL_CROPS){
+        if(!(current.flags&FX_PHOTO_STILL_CROPS))c->flags=0u;
+        text(c->label,"4:3 / 2.39:1 / 65:24");text(c->text,"照片拍摄菜单 → 选择影像区域");
+    }
+    else if(ui_id==NATIVE_BROWSER){
+        if(!(current.flags&FX_PHOTO_NATIVE_BROWSER))c->flags=0u;
+        text(c->label,"像素位移浏览器");text(c->text,"无损 NEF，支持 MENU / OK 触控");
+    }
     else {text(c->label,"RAW 格式");text(c->text,current.raw_recording==1u?"C15/C30下无损选项录制HE*":current.raw_recording==3u?"HE*":current.raw_recording==4u?"HE":"使用FX/DX L、C15/C30及HE/HE*");}
 }
 int fenestra_module_entry(const FxModuleServices *base){
@@ -76,45 +83,29 @@ int fenestra_module_entry(const FxModuleServices *base){
         /* The first directory snapshot needs this page before QUERY can wait
          * on the GUI task captured by the directory's page-open callback. */
         else if(stage==CONFIGURE&&r.result==FX_OK)stage=PAGE;
-        else if(stage==PAGE&&r.result==FX_OK){revision[1]=(uint32_t)r.value[0];stage=DECLARE;}
-        /* The rate table is optional: any failure leaves the row disabled and continues to the photo service. */
-        else if(stage==DECLARE)stage=(r.result==FX_OK||r.result==FX_STATE)?TOPEN:OPEN;    /* STATE: declared earlier this boot */
-        else if(stage==TOPEN){if(r.result==FX_OK&&r.value[0]){table=r.value[0];stage=TREAD;}else stage=OPEN;}
-        else if(stage==TREAD){
-            uint32_t v[16];rate_ok=0u;
-            if(r.result==FX_OK&&r.bytes==sizeof(v)){memcpy(v,r.data,sizeof(v));
-                if(!memcmp(v,c40_marker,8)&&v[2]<2u&&v[3]==40000u&&v[12]==0u&&v[13]<2u&&v[14]==0u&&v[15]==140000u){
-                    rate[0]=v[2];rate[1]=v[13];rate_ok=1u;}}
-            if(!opened)stage=OPEN;else{published=0;stage=binding?QUERY:UI;ui_id=2u;}
+        else if(stage==PAGE&&r.result==FX_OK){revision[1]=(uint32_t)r.value[0];stage=OPEN;}
+        else if(stage==OPEN){if(r.result==FX_OK&&r.value[0]){binding=r.value[0];stage=QUERY;}else if(r.result==FX_CAPABILITY||r.result==FX_STATE){unavailable=1;stage=UI;ui_id=FIRST_CHILD;}else return 4;}
+        else if(stage==QUERY&&r.result==FX_OK){if(!snapshot(&r))return 5;if(!published||memcmp(&current,&shown,sizeof(current))){stage=UI;ui_id=FIRST_CHILD;}else stage=POLL;}
+        else if(stage==UI&&r.result==FX_OK){
+            revision[ui_id]=(uint32_t)r.value[0];
+            if(ui_id==last_control()){shown=current;published=1;stage=POLL;}
+            else ui_id=ui_id==RAW_FORMAT?DX_C60:ui_id+1u;
         }
-        else if(stage==TSTORE)stage=TREAD;                                 /* show what the page now holds */
-        else if(stage==OPEN){opened=1u;if(r.result==FX_OK&&r.value[0]){binding=r.value[0];stage=QUERY;}else if(r.result==FX_CAPABILITY||r.result==FX_STATE){unavailable=1;stage=UI;ui_id=2;}else return 4;}
-        else if(stage==QUERY&&r.result==FX_OK){if(!snapshot(&r))return 5;if(!published||memcmp(&current,&shown,sizeof(current))){stage=UI;ui_id=2;}else stage=POLL;}
-        else if(stage==UI&&r.result==FX_OK){revision[ui_id]=(uint32_t)r.value[0];if(++ui_id==12u){shown=current;published=1;stage=POLL;}}
         else if(stage==POLL&&(r.result==FX_OK||r.result==FX_EMPTY)){
             stage=binding?QUERY:POLL;
             if(r.result==FX_OK&&r.bytes==sizeof(FxUiEvent)){
                 FxUiEvent e;memcpy(&e,r.data,sizeof(e));
-                if(e.control<12u&&e.reserved==revision[e.control]){
+                if(e.control>=3u&&e.control<=6u&&e.reserved==revision[e.control]){
                     if(e.control==3u&&e.event==FX_INPUT_CHANGE&&e.value<2u&&ready()){mode=e.value;armed=0;published=0;}
                     else if(e.control==4u&&e.event==FX_INPUT_CHANGE&&e.value<2u&&ready()){armed=e.value;published=0;}
                     else if(e.control==5u&&e.event==FX_INPUT_ACTIVATE&&ready()&&armed)stage=START;
                     else if(e.control==6u&&e.event==FX_INPUT_ACTIVATE&&(current.flags&FX_PHOTO_RUNNING))stage=CANCEL;
-                    else if((e.control==9u||e.control==11u)&&e.event==FX_INPUT_CHANGE&&e.value<2u&&rate_ok&&table){want=e.value;want_at=e.control==9u?8u:0x34u;stage=TSTORE;}
                 }
             }
         }else return 6;
     }
     FxResult r;
     if(stage==CONFIGURE)r=fx_sdk_lifecycle(&client,api,FX_LIFE_CONFIGURE,FX_MODULE_EXTENSION);
-    else if(stage==DECLARE){
-        FxBindingInfo d;memset(&d,0,sizeof(d));text(d.name,C40_TABLE);
-        d.kind=FX_BIND_TABLE;d.abi=FX_CALL_BYTES;d.version=1u;d.flags=FX_BIND_READ|FX_BIND_WRITE;
-        d.capabilities=FX_SDK_NATIVE;d.bytes=64u;d.address=C40_PAGE;r=fx_sdk_declare(&client,api,&d);
-    }
-    else if(stage==TOPEN)r=fx_sdk_open(&client,api,C40_TABLE,1u);
-    else if(stage==TREAD)r=fx_sdk_platform(&client,api,FX_BIND_COPY,table,0u,64u,0,0u);
-    else if(stage==TSTORE){uint32_t v=want;r=fx_sdk_platform(&client,api,FX_BIND_STORE,table,want_at,sizeof(v),&v,sizeof(v));}
     else if(stage==OPEN)r=fx_sdk_open(&client,api,"camera.photo.tools",FX_PHOTO_TOOLS_ABI);
     else if(stage==QUERY)r=fx_sdk_platform(&client,api,FX_BIND_CALL,binding,FX_PHOTO_TOOLS_QUERY,0,0,0);
     else if(stage==START){FxPhotoToolsStart v={FX_PHOTO_TOOLS_ABI,sizeof(v),mode,FX_PHOTO_TOOLS_CONFIRM};r=fx_sdk_platform(&client,api,FX_BIND_CALL,binding,FX_PHOTO_TOOLS_START,0,&v,sizeof(v));}

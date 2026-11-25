@@ -1,6 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 #include "fenestra_framing.h"
 #include "fenestra_memory.h"
+
+uint32_t fx_framing_3_2_mode(uint32_t file_type,uint32_t enabled,uint32_t size,uint32_t rate) {
+    if(file_type!=6u || enabled!=1u)return FX_FRAMING_MODE_3_2_NONE;
+    if(size==6u && rate>=4u && rate<=6u)return FX_FRAMING_MODE_8K3_30+rate-4u;
+    if(size==4u && rate<=6u)return FX_FRAMING_MODE_4K1_120+rate;
+    return FX_FRAMING_MODE_3_2_NONE;
+}
+
 static int enter(FxFramingControl *s) {
     uint32_t zero=0u;
     return atomic_compare_exchange_strong_explicit(&s->gate,&zero,1u,memory_order_acquire,memory_order_relaxed);
@@ -15,6 +23,10 @@ static FxResult snapshot(FxFramingControl *s,FxFramingStatus *v) {
     if(result!=FX_OK)return result;
     if(v->abi!=FX_FRAMING_ABI || v->bytes!=sizeof(*v) || v->nraw>=4u ||
        v->desqueeze>=8u || v->open_gate>1u)return FX_INTEGRITY;
+    if(v->capabilities&FX_FRAMING_FILE_TYPE_3_2) {
+        uint32_t mode=(v->flags&FX_FRAMING_MODE_3_2_MASK)>>FX_FRAMING_MODE_3_2_SHIFT;
+        if(mode>FX_FRAMING_MODE_4K1_24 || (mode!=FX_FRAMING_MODE_3_2_NONE)!=v->open_gate)return FX_INTEGRITY;
+    }
     v->revision=s->revision;
     if(s->revoked)v->flags|=FX_FRAMING_REVOKED;
     return FX_OK;
