@@ -1,6 +1,7 @@
 """Build the installable Z8 C3.11 Cube LUT WLM with its JPEG provider and shooting menu."""
 
 import argparse
+from build_sdk_module import main as build_frontend
 from contextlib import redirect_stdout
 from io import StringIO
 import json
@@ -679,7 +680,12 @@ def build(stock_path, foundation_path, photo_path, output, llvm):
         jpeg = bundle_at(stage / "jpeg/jpeg_lut.wlm")
         providers = [*bundle_components(jpeg), *bundle_components(rear)]
         component_variants([*photo, *providers])
-        package = encode_bundle(rear["frontend"], "cube_lut", [*providers, menu], TARGET)
+        with redirect_stdout(StringIO()):
+            build_frontend([str(ROOT / "modules/lut_preview/module.c"), "--id", "cube_lut",
+                            "--target", "z8-c311", "--required", "0", "--optimize", "s",
+                            "--llvm-bin", str(llvm), "--output-dir", str(stage / "cube_frontend")])
+        frontend = (stage / "cube_frontend/cube_lut.wlm").read_bytes()
+        package = encode_bundle(frontend, "cube_lut", [*providers, menu], TARGET)
         delivered = decode_bundle(package, module_id="cube_lut", target=TARGET)
         components = bundle_components(delivered)
         require(components == [*providers, menu], "sealed LUT bundle differs from its inputs")

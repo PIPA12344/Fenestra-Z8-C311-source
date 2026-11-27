@@ -178,6 +178,9 @@ typedef struct {
     uint64_t last_neon_frame_ms, evf_slice_start;
     uint64_t stop_started_ms;
     uint32_t closing, parsed, stop_started, grade_quarantined;
+    /* Worker-owned. A parked workspace waits for a stable open gate. */
+    uint32_t parked;
+    uint64_t gate_open_tick;
     FxZ8JpegLutSelected jpeg;
     _Atomic(const uint32_t *) permit;
     _Atomic uint32_t output_ticket, io_epoch;
@@ -858,6 +861,7 @@ static FxResult prepare(RearState *s,uint64_t *slice_start) {
             return FX_STATE;
         }
         s->stage_cpu=s->view.cpu;
+        s->parked=0;
         for (unsigned i=0;i<BANKS;++i) {
             Bank *bank=&s->bank[i];
             uintptr_t cpu=(uintptr_t)(s->view.cpu+GRADED_OFFSET+i*BANK_BYTES);
@@ -1269,8 +1273,50 @@ FxResult grade(RearState *s,const Stage *stage,const SourcePlanes *source,Bank *
     return FX_OK;
 }
 
+/* High-speed frame capture (C15/C30/C60/C120) allocates its frame ring from
+ * the same stock image pool as this workspace. Holding the 15 MB surface into
+ * C15 left the release busy until a cold start. While the release gate is
+ * closed, return the surface once stock owns every display bank again. The
+ * parsed LUT stays; the surface returns after the gate has stayed open. */
+static __attribute__((minsize,noinline)) void park_workspace(RearState *s) {
+    s->gate_open_tick=0;
+    if (!s->view.cpu || s->pending_bank || s->late_helper_lease || s->grade_quarantined ||
+        atomic_load(&M.quarantined)) return;
+    /* Hooks stop admitting new banks before the claim is checked. */
+    atomic_store(&M.display_ready,0);
+    if (!claim(&s->display_claim,0,1)) return;
+    int idle=!atomic_load(&M.hook_active) && !hardware_pending();
+    if (idle)
+        for (unsigned i=0;i<BANKS;++i) atomic_store(&s->bank[i].state,BANK_FREE);
+    atomic_store(&s->display_claim,0);
+    if (!idle) return;
+    int result=photo_workspace_unpin(&s->pool);
+    s->view=(PhotoWorkspaceView){0};
+    s->stage_cpu=NULL;
+    s->cache_ready=0;
+    s->parked=1;
+    if (result==PHOTO_WS_OK) result=photo_workspace_release(&s->pool);
+    atomic_store(&M.pool_result,result);
+    if (result!=PHOTO_WS_OK) s->load_error=FX_CLOSE;
+    else atomic_store(&M.surface_bytes,0u);
+}
+
+/* A parked surface returns after the gate has stayed open for one second
+ * of the monotonic system counter. */
+static int reopen_settled(RearState *s) {
+    if (!s->parked) return 1;
+    uint64_t now=ticks();
+    if (!s->gate_open_tick) s->gate_open_tick=now;
+    return now-s->gate_open_tick>=frequency();
+}
+
 static __attribute__((minsize,noinline)) uint32_t make_frame(RearState *s) {
     uint64_t entered=ticks(), slice_start=entered;
+    if (!release_allowed()) {
+        atomic_store(&M.active_route,UINT32_MAX);
+        park_workspace(s);
+        return FX_EMPTY;
+    }
     uint32_t ticket=observe_route(), index=ticket&ROUTE_MASK;
     if (index==EVF && s->evf_slice_start) slice_start=s->evf_slice_start;
     s->evf_slice_start=0;
@@ -1279,6 +1325,7 @@ static __attribute__((minsize,noinline)) uint32_t make_frame(RearState *s) {
         return FX_EMPTY;
     }
     if (!worker_layout(s,ticket) || !preview_checkpoint(&slice_start)) return FX_EMPTY;
+    if (!reopen_settled(s)) return FX_EMPTY;
     RouteState *r=&s->route[index];
     FxResult rc=prepare(s,&slice_start);
     if (rc!=FX_OK) return rc;
@@ -1521,6 +1568,8 @@ static FxResult retire_workspace(RearState *s,int allow_retained) {
     }
     s->parsed=0;
     s->cache_ready=0;
+    s->parked=0;
+    s->gate_open_tick=0;
     s->load_error=FX_OK;
     s->closing=0;
     s->stop_started=0;

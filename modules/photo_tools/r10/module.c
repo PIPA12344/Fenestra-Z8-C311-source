@@ -64,7 +64,7 @@ static void control(FxUiControl *c){
     }
     else if(ui_id==STILL_CROPS){
         if(!(current.flags&FX_PHOTO_STILL_CROPS))c->flags=0u;
-        text(c->label,"4:3 / 2.39:1 / 65:24");text(c->text,"照片拍摄菜单 → 选择影像区域");
+        text(c->label,"4:3 / 2.39:1 / 65:24");text(c->text,"照片菜单→影像区域，未加载回FX");
     }
     else if(ui_id==NATIVE_BROWSER){
         if(!(current.flags&FX_PHOTO_NATIVE_BROWSER))c->flags=0u;

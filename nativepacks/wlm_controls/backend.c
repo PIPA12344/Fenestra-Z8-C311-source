@@ -36,6 +36,10 @@ typedef struct {
     FxPhotoToolsControl photo;
     FxControlsPhotoBridge photo_bridge;
     FxControlsDcfSubscription dcf_subscription;
+#if FX_WLM_SUITE_V051
+    uint32_t saved_still_area,still_area_parked;
+    _Atomic uint32_t restore_still_area;
+#endif
 #endif
     FxNativePackProvider provider;
     FxNativePackSymbol symbols[3];
@@ -61,6 +65,46 @@ static uint64_t tick_rate(void){
  return 0u;
 #endif
 }
+#if FX_WLM_SUITE_V051
+/* Stock Z8 C3.11 photo image area (0x07000603) only has ISP/LV tables for
+ * FX(0), DX(1), 16:9(4) and 1:1(8). Park custom crop slots (4:3=2, 2.39:1=3,
+ * 65:24=6) back to FX(0) on shutdown so booting without photo_tools.wlm never
+ * enters stock photo live-view with NULL tables, and restore after warm resume
+ * on the original GUI task once hooks are re-armed. */
+#define FX_Z8_PROP_STILL_AREA UINT32_C(0x07000603)
+static int still_area_stock(uint32_t v){return v==0u||v==1u||v==4u||v==8u;}
+static int still_area_custom(uint32_t v){return v==2u||v==3u||v==6u;}
+static void photo_still_area_park(FxWlmControlState *s){
+    uint32_t pending_restore=atomic_exchange_explicit(&s->restore_still_area,0u,memory_order_acq_rel);
+    if(!s->still_area_parked&&still_area_custom(pending_restore)){
+        s->saved_still_area=pending_restore;s->still_area_parked=1u;
+    }
+    if(!s->profile.get||!s->profile.set)return;
+    uint32_t current_area=((uint32_t (*)(uint32_t))s->profile.get)(FX_Z8_PROP_STILL_AREA);
+    if(!still_area_stock(current_area)){
+        if(!s->still_area_parked&&still_area_custom(current_area)){
+            s->saved_still_area=current_area;s->still_area_parked=1u;
+        }
+        (void)((uint32_t (*)(uint32_t,uint32_t))s->profile.set)(FX_Z8_PROP_STILL_AREA,0u);
+    }
+}
+static void photo_still_area_stage_resume(FxWlmControlState *s){
+    uint32_t saved=s->saved_still_area;
+    s->saved_still_area=0u;s->still_area_parked=0u;
+    if(still_area_custom(saved))atomic_store_explicit(&s->restore_still_area,saved,memory_order_release);
+}
+static void photo_still_area_poll_restore(FxWlmControlState *s){
+    uint32_t restore=atomic_load_explicit(&s->restore_still_area,memory_order_acquire);
+    if(!still_area_custom(restore)||!s->profile.get||!s->profile.set)return;
+    if(!lock(&s->gate))return;
+    if(!atomic_load_explicit(&s->revoked,memory_order_acquire)){
+        restore=atomic_exchange_explicit(&s->restore_still_area,0u,memory_order_acq_rel);
+        if(still_area_custom(restore)&&((uint32_t (*)(uint32_t))s->profile.get)(FX_Z8_PROP_STILL_AREA)==0u)
+            (void)((uint32_t (*)(uint32_t,uint32_t))s->profile.set)(FX_Z8_PROP_STILL_AREA,restore);
+    }
+    unlock(&s->gate);
+}
+#endif
 #endif
 #if FX_WLM_FEATURE == FX_WLM_FRAMING
 static FxResult framing_read(void *context,FxFramingStatus *v){
@@ -140,6 +184,9 @@ static FxResult event(void *context,uint32_t op){
     if(op==FX_NATIVE_PACK_GUI_POLL){
         atomic_fetch_add_explicit(&s->entered,1u,memory_order_acquire);
 #if FX_WLM_FEATURE == FX_WLM_PHOTO_TOOLS
+#if FX_WLM_SUITE_V051
+        photo_still_area_poll_restore(s);
+#endif
         fx_photo_tools_poll(&s->photo);
 #endif
         atomic_fetch_sub_explicit(&s->entered,1u,memory_order_release);return FX_OK;
@@ -150,6 +197,9 @@ static FxResult event(void *context,uint32_t op){
         (void)fx_controls_photo_stop(&s->photo);
 #endif
         if(!lock(&s->gate))return FX_BUSY;
+#if FX_WLM_FEATURE == FX_WLM_PHOTO_TOOLS && FX_WLM_SUITE_V051
+        photo_still_area_park(s);
+#endif
         if(!lock(&s->video.gate)){unlock(&s->gate);return FX_BUSY;}
         for(uint32_t i=0u;i<FX_SUITE_VIDEO_CHANNELS;++i){s->video.channel[i].revoked=1u;if(!atomic_load(&s->video.active))s->video.channel[i].enabled=0u;}
         unlock(&s->video.gate);
@@ -172,6 +222,9 @@ static FxResult event(void *context,uint32_t op){
         FxResult r=owner?FX_BUSY:FX_OK;
 #if FX_WLM_FEATURE == FX_WLM_PHOTO_TOOLS
         if(r==FX_OK)r=fx_controls_photo_resume(&s->photo);
+#if FX_WLM_SUITE_V051
+        if(r==FX_OK)photo_still_area_stage_resume(s);
+#endif
 #elif FX_WLM_FEATURE == FX_WLM_FRAMING
         if(r==FX_OK)s->framing.revoked=0u;
 #endif

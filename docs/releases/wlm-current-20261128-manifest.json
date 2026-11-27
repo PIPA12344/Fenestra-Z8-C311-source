@@ -1,0 +1,206 @@
+{
+  "schema": "fenestra.z8-wlm-release/v1",
+  "date": "2026-11-28",
+  "tag": "wlm-2026.11.28-current",
+  "target": "Nikon Z 8 C3.11",
+  "core": "cold-retry3",
+  "core_build_identity": "f06231d84970cda74ff6afcdb2aad7d03f6fe0bc4a3ec76c15a9cfd40654579a",
+  "stock_main_sha256": "2b43a31c9de838f84b12416de4348a7004e65be07f853ec56ec2b10f3a8e3853",
+  "foundation_main_sha256": "0e0114267ef82caf78b7795a470192b434528ec0f4a8a6b031d1a003c4c63dfd",
+  "requires_id": "0x81947c592af69a37",
+  "plugins": [
+    {
+      "file": "FENESTRA/photo_tools.wlm",
+      "bytes": 773920,
+      "sha256": "f84fbea69f95b54f11afd9207f4ed1ffb2929264cfaa972ea34a16e50ce98bb4",
+      "source_artifact": "build/z8-crop-guard-wlm-20261128/plugins/FENESTRA/photo_tools.wlm",
+      "upgrade_group": "v051-five"
+    },
+    {
+      "file": "FENESTRA/framing.wlm",
+      "bytes": 597271,
+      "sha256": "e39682a62b7daad5474f92f8cc6d625a0a3fe30d2555970785bcb863e33ceab9",
+      "source_artifact": "build/z8-crop-guard-wlm-20261128/plugins/FENESTRA/framing.wlm",
+      "upgrade_group": "v051-five"
+    },
+    {
+      "file": "FENESTRA/prores.wlm",
+      "bytes": 553908,
+      "sha256": "dec0b049f4e602a6595530f67af0dc2801c0887af186450a108e33463fa17678",
+      "source_artifact": "build/z8-crop-guard-wlm-20261128/plugins/FENESTRA/prores.wlm",
+      "upgrade_group": "v051-five"
+    },
+    {
+      "file": "FENESTRA/h265.wlm",
+      "bytes": 567515,
+      "sha256": "f66280cb15cb2c5805431f1628d441454677c46e0c2fb21de087d8d002cd70dd",
+      "source_artifact": "build/z8-crop-guard-wlm-20261128/plugins/FENESTRA/h265.wlm",
+      "upgrade_group": "v051-five"
+    },
+    {
+      "file": "FENESTRA/log_colour.wlm",
+      "bytes": 606396,
+      "sha256": "9c67d1a56f92e25c6815ed9799b06c5d2e5bfec4eeaa64f5c6461a4e7963fe23",
+      "source_artifact": "build/z8-crop-guard-wlm-20261128/plugins/FENESTRA/log_colour.wlm",
+      "upgrade_group": "v051-five"
+    },
+    {
+      "file": "FENESTRA/cube_lut.wlm",
+      "bytes": 114878,
+      "sha256": "7c16f104ec4c77955491873fb69874c553ac8b38b8a871374bcc1bb35dc8ec89",
+      "source_artifact": "build/z8-cube-lut-c15fast-20261128/card/cube_lut.wlm",
+      "upgrade_group": "companion"
+    },
+    {
+      "file": "FENESTRA/card_wav.wlm",
+      "bytes": 23397,
+      "sha256": "f89e9b1842576ae872ee74c655318b4786b60859d306f4885bfd30051d34a125",
+      "source_artifact": "build/z8-record-coalesce-20261125/card/FENESTRA/card_wav.wlm",
+      "upgrade_group": "companion"
+    },
+    {
+      "file": "FENESTRA/portrait_video.wlm",
+      "bytes": 8480,
+      "sha256": "9fee9e580c93d684b53faf9ae79ecbf826e5bdc3d6daa6b3047afa3626a31336",
+      "source_artifact": "build/z8-record-coalesce-20261125/card/FENESTRA/portrait_video.wlm",
+      "upgrade_group": "companion"
+    }
+  ],
+  "camera_evidence": {
+    "source": "user report for these exact eight files; no camera access during release preparation",
+    "installed": true,
+    "production_c_records": 900,
+    "pages": 695,
+    "overlapping_image_pages": 0
+  },
+  "firmware_included": false,
+  "early_boot_area_guard": "source only; pending next foundation release",
+  "installation": "Replace all installed v051-five members together; complete normal shutdown before restart; battery removal not required",
+  "excluded_plugins": [
+    "hello.wlm",
+    "DEMO.WLM",
+    "z8_mascot.wlm",
+    "UI_VERIFY.wlm",
+    "watermark.wlm"
+  ],
+  "reproducible_build": {
+    "verified": true,
+    "exact_plugins": 8,
+    "source_tag": "wlm-2026.11.28-current",
+    "recipe": "docs/wlm-current-build.zh-CN.md",
+    "toolchain": "Windows x64 LLVM 19.1.5"
+  },
+  "offline_verification": {
+    "schema": "fenestra.z8-wlm-release-verification/v1",
+    "no_camera": true,
+    "exact_plugin_hashes": true,
+    "plugin_count": 8,
+    "input_component_views": 28,
+    "records": 900,
+    "pages": 695,
+    "image_pages": 370,
+    "overlapping_image_pages": 0,
+    "overlap_scope": "v051-five IMAGE pages versus companion IMAGE pages",
+    "page_count_scope": "all patch target pages; excludes the loader-owned revocation page",
+    "composition_sha256": "b243f22dfabb42580f5f9dde3f4bff07886acb751f1b947537c4a446bb427781",
+    "production_c": {
+      "result": 0,
+      "bytes": 2726616,
+      "selection": 1407,
+      "entries": [
+        1083244744,
+        1083048136,
+        1083113672,
+        1083179208,
+        1083310280,
+        1083375616,
+        1083457788,
+        1086193664,
+        1082982760,
+        1086232996,
+        1086266448,
+        1085686164
+      ],
+      "allocations": 17,
+      "peak": 5586096,
+      "live": 0
+    },
+    "python_bytes_equal": true,
+    "foundation_preimages_verified": {
+      "file_preimages": 899,
+      "approved_bootstrap_roots": [
+        "0xa02f2ab80"
+      ],
+      "image_pages": 370
+    },
+    "cold_scan": [
+      {
+        "fit": "first-fit",
+        "pool_bytes": 7185013,
+        "frozen_budget": 33554432,
+        "initial_largest_free": 6775360,
+        "scan_result": 0,
+        "scan_files": 8,
+        "scan_native_components": 15,
+        "scan_peak": 1577424,
+        "scan_peak_with_overhead": 1577808,
+        "scan_retained": 1114046,
+        "scan_largest_free": 5324608,
+        "largest_read": 773921,
+        "frontend_bytes": 28909,
+        "compose_result": 0,
+        "compose_combined_peak": 6700142,
+        "compose_peak_with_overhead": 6701088,
+        "compose_retained": 3840662,
+        "retained_after_release_native": 2759237,
+        "failed_allocation": 0,
+        "failed_free": 0,
+        "failed_largest_free": 0,
+        "plan_bytes": 2726616,
+        "selection": 1407,
+        "seal_result": 0
+      },
+      {
+        "fit": "best-fit",
+        "pool_bytes": 7185013,
+        "frozen_budget": 33554432,
+        "initial_largest_free": 6775360,
+        "scan_result": 0,
+        "scan_files": 8,
+        "scan_native_components": 15,
+        "scan_peak": 1577424,
+        "scan_peak_with_overhead": 1577808,
+        "scan_retained": 1114046,
+        "scan_largest_free": 5324608,
+        "largest_read": 773921,
+        "frontend_bytes": 28909,
+        "compose_result": 0,
+        "compose_combined_peak": 6700142,
+        "compose_peak_with_overhead": 6701088,
+        "compose_retained": 3840662,
+        "retained_after_release_native": 2759237,
+        "failed_allocation": 0,
+        "failed_free": 0,
+        "failed_largest_free": 0,
+        "plan_bytes": 2726616,
+        "selection": 1407,
+        "seal_result": 0
+      }
+    ],
+    "reproducible_build": {
+      "verified": true,
+      "exact_plugins": 8,
+      "source_tag": "wlm-2026.11.28-current",
+      "recipe": "docs/wlm-current-build.zh-CN.md",
+      "toolchain": "Windows x64 LLVM 19.1.5"
+    },
+    "focused_tests": {
+      "passed": 15,
+      "subtests": 9,
+      "crop_shutdown_and_lut_admission": 4,
+      "production_composer_and_photo_tools": 10,
+      "future_core_boot_guard": 1,
+      "physical_camera": false
+    }
+  }
+}

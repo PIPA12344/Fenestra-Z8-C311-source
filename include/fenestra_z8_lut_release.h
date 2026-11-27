@@ -8,6 +8,10 @@
 #define FX_Z8_LUT_RELEASE_MODE_ADDRESS UINT64_C(0xa03d47adc)
 #define FX_Z8_LUT_SELF_TIMER_ADDRESS UINT64_C(0xa03d47ae0)
 #define FX_Z8_LUT_CONTINUOUS_MODE_ADDRESS UINT64_C(0xa03d7c7a4)
+/* DS 0x06000604 Image quality file type: 0 RAW+JPEG, 1 RAW, 3 JPEG.
+ * RAW-only shooting keeps the stock look in live view and NEF previews. */
+#define FX_Z8_LUT_FILE_TYPE_ADDRESS UINT64_C(0xa03d482c8)
+#define FX_Z8_LUT_FILE_TYPE_RAW 1u
 
 #ifdef FX_Z8_LUT_SYNTHETIC_RELEASE
 uint32_t fx_z8_lut_test_release_read(uintptr_t address);
@@ -28,6 +32,7 @@ static inline int fx_z8_lut_single_frame(void) {
 
 static inline int fx_z8_lut_jpeg_release(void) {
     if (fx_z8_lut_release_read(FX_Z8_LUT_SELF_TIMER_ADDRESS) != 0u) return 0;
+    if (fx_z8_lut_release_read(FX_Z8_LUT_FILE_TYPE_ADDRESS) == FX_Z8_LUT_FILE_TYPE_RAW) return 0;
     uint32_t mode = fx_z8_lut_release_read(FX_Z8_LUT_RELEASE_MODE_ADDRESS);
     if (mode == 0u) return 1;  /* S may retain the last continuous speed. */
     /* Stock 0x5013 table at 0x440f4d44 uses DS 0x2126 to select CL or CH. */

@@ -26,6 +26,7 @@ enum { STAGING_BYTES = 24 * 1024 * 1024, PAD = 512, READ_CHUNK = 32768,
 enum { HELPER_YIELD_US = 20000, US_PER_SECOND = 1000000 };
 enum { ARM_CACHE_BYTES = CUBE_FRAME_CACHE_WORDS * sizeof(uint32_t) };
 enum { LUT_CACHE_SLOTS = 2, LUT_CACHE_VERSION = 1 };
+enum { PARK_WAIT = 1, PARK_REARM = 3 };
 _Static_assert(ARM_CACHE_BYTES <= XM6_ARENA && ARM_CACHE_BYTES % 64 == 0,
                "ARM table must fit in the exclusive aligned workspace");
 
@@ -93,7 +94,10 @@ typedef struct {
     uint64_t cpu_ticks[IMAGE_COUNT];
     uint8_t reference[IMAGE_COUNT][25][3];
     _Atomic uint32_t linked, cancel_requested;
-    uint32_t reserved_capture_active;
+    /* Parked eager surfaces: 0 none, PARK_WAIT until the release gate opens,
+     * PARK_REARM while rebuilding, otherwise the gate-open time in counter/64
+     * units with the low bits 0b10. */
+    uint32_t park_state;
     _Atomic uint32_t completed;
     uint32_t pool_uncertain;
     uint64_t uncertain_handle;
@@ -507,6 +511,7 @@ static uint32_t finish(JpegLut *test, uint32_t phase) {
         test->staging = NULL;
     }
     if (test->card_uncertain) phase = RETAINED;
+    test->park_state = 0;
     release_capture(test);
     atomic_store_explicit(&test->phase, phase, memory_order_release);
     return phase;
@@ -667,6 +672,7 @@ static FxResult arm_named(JpegLut *test, uint32_t xm6, uint32_t linked, const ch
     test->grid = 0;
     test->used = test->total = test->calls = 0;
     test->bake_pos = 0;
+    test->park_state = 0;
     test->use_xm6 = xm6;
     test->eager = eager;
     test->want_output = enabled;
@@ -1019,6 +1025,18 @@ static uint32_t warm_slice(JpegLut *test) {
     return test->bake_pos == CUBE_FRAME_CACHE_WORDS;
 }
 
+/* A parked surface returns after one second of continuously open gate. */
+static int reopen_settled(JpegLut *test) {
+    uint32_t state = test->park_state;
+    if (!state || state == PARK_REARM) return 1;
+    uint32_t now = ((uint32_t)(counter() >> 6) & ~3u) | 2u;
+    if (!release_allowed()) state = PARK_WAIT;
+    else if (state == PARK_WAIT) state = now;
+    else if (now - state >= (uint32_t)(frequency() >> 6)) state = PARK_REARM;
+    test->park_state = state;
+    return state == PARK_REARM;
+}
+
 static uint32_t advance_eager(JpegLut *test, uint32_t *phase) {
     if (*phase == LOADING) {
         if (test->fd < 0) return open_cube(test);
@@ -1061,6 +1079,7 @@ static uint32_t advance_eager(JpegLut *test, uint32_t *phase) {
     if (test->baked && test->bake_pos < CUBE_FRAME_CACHE_WORDS && !warm_slice(test)) return 0;
     test->prepared->version = LUT_CACHE_VERSION;
     if (test->want_output && !test->staging) {
+        if (!reopen_settled(test)) return 0;
         if (!acquire_staging(test)) return MEMORY;
         uint8_t *arena = test->staging + XM6_STAGE_BYTES;
         if (test->use_xm6 == XM6_FILE) {
@@ -1068,6 +1087,13 @@ static uint32_t advance_eager(JpegLut *test, uint32_t *phase) {
         } else {
             test->baked = (uint32_t *)(void *)private_plane(arena, ARM_CACHE_BYTES);
             if (!test->baked) return MEMORY;
+            /* Returning from a parked gate: tag 0 never matches, so a zeroed
+             * table is valid and graders fill entries on first use, as the rear
+             * cache does. Warming the full table took 10-20 s of worker turns. */
+            if (test->park_state) {
+                fx_ram_zero(test->baked, ARM_CACHE_BYTES);
+                test->bake_pos = CUBE_FRAME_CACHE_WORDS;
+            }
         }
         if (!release_handle(&test->spacer)) {
             test->pool_uncertain = 1;
@@ -1076,9 +1102,50 @@ static uint32_t advance_eager(JpegLut *test, uint32_t *phase) {
     }
     if (test->baked && test->bake_pos < CUBE_FRAME_CACHE_WORDS) return 0;
     atomic_store_explicit(&test->output_enabled, test->want_output, memory_order_release);
+    test->park_state = 0;
     *phase = ARMED;
     return 0;
 }
+
+#ifdef FX_Z8_LUT_SHARED_OUTPUT
+/* High-speed frame capture (C15/C30/C60/C120) draws its frame ring from the
+ * same stock image pool. Holding these surfaces into C15 left the release busy
+ * until a cold start (camera, 2026-11-28). While the release gate is closed and
+ * no exposure, view or DSP job is in flight, return them; the prepared LUT
+ * stays, and the eager path rebuilds the surfaces once the gate is open again. */
+static __attribute__((noinline, minsize)) void park_surfaces(JpegLut *test) {
+    uint32_t phase = ARMED;
+    if (!test->eager || !test->staging || test->pool_uncertain || release_allowed() || active_views(test) ||
+        atomic_load_explicit(&BURST_METRICS.active_exposures, memory_order_acquire) ||
+        atomic_load_explicit(&test->job_phase, memory_order_acquire) != JOB_EMPTY ||
+        !atomic_compare_exchange_strong(&test->phase, &phase, RUNNING)) return;
+    atomic_store_explicit(&test->output_enabled, 0, memory_order_release);
+    if (release_allowed() || active_views(test) ||
+        atomic_load_explicit(&BURST_METRICS.active_exposures, memory_order_acquire) ||
+        (test->baked && !clean_private_table(test->baked))) {
+        atomic_store_explicit(&test->output_enabled, test->want_output, memory_order_release);
+        atomic_store_explicit(&test->phase, ARMED, memory_order_release);
+        return;
+    }
+    test->baked = NULL;
+    test->bake_pos = 0;
+    int released = release_handle(&test->staging_handle);
+    for (unsigned i = 0; i < 2; ++i) {
+        if (release_handle(&test->snapshot_handle[i])) test->snapshot[i] = NULL;
+        else released = 0;
+    }
+    if (!release_handle(&test->spacer)) released = 0;
+    if (!released) {
+        test->pool_uncertain = 1;
+        test->reason = MEMORY;
+        atomic_store_explicit(&test->phase, RETAINED, memory_order_release);
+        return;
+    }
+    test->staging = NULL;
+    test->park_state = PARK_WAIT;
+    atomic_store_explicit(&test->phase, PREPARING, memory_order_release);
+}
+#endif
 
 /* Run one bounded filesystem operation per worker request. The menu can
  * cancel between chunks, and no RTOS debug invocation performs file I/O. */
@@ -1086,12 +1153,18 @@ static void advance(JpegLut *test) {
     fx_z8_jpeg_lut_snapshot_work();
     reap_capture(test);
     uint32_t phase = atomic_load_explicit(&test->phase, memory_order_acquire);
+#ifdef FX_Z8_LUT_SHARED_OUTPUT
+    if (phase == ARMED) {
+        park_surfaces(test);
+        return;
+    }
+#endif
     if (phase != LOADING && phase != PREPARING && phase != CLEANUP) return;
     if (!atomic_compare_exchange_strong(&test->phase, &phase, RUNNING)) return;
     if (phase == CLEANUP) { (void)finish(test, test->final_phase); return; }
     if (!atomic_load_explicit(&online, memory_order_acquire) || test->cancel_requested
 #ifdef FX_Z8_LUT_SHARED_OUTPUT
-        || !io_current(test) || !permitted(test, 0)
+        || !io_current(test) || (!permitted(test, 0) && !(test->park_state && permitted(test, 1)))
 #endif
         ) {
         (void)finish(test, IDLE);

@@ -7,7 +7,7 @@ Fenestra 的 Nikon Z 8 C3.11 移植。这里提供核心、WLM SDK、功能插�
 ## 开始使用
 
 1. **准备底座。** 当前功能 WLM 都配套 Nikon Z 8 C3.11 的 `cold-retry3`。Linux、macOS 和 Windows 可用预编译差分补丁从官方 C3.11 在本地生成底座。也可以按固定源码标签重新编译。[准备底座](docs/z8-usage.zh-CN.md#准备底座)
-2. **下载整套插件。** 在 [2026-11-26 插件整合包](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.26-current) 下载一个 ZIP，把所需的 WLM 更新到启动卡的 `FENESTRA/` 后冷启动。[8 项功能和整包替换步骤](docs/releases/wlm-current-20261126.md) · [复建插件](docs/wlm-current-build.zh-CN.md)
+2. **下载整套插件。** 在 [2026-11-28 插件整合包](https://github.com/PIPA12344/Fenestra-Z8-C311-source/releases/tag/wlm-2026.11.28-current) 下载一个 ZIP，把所需的 WLM 更新到启动卡的 `FENESTRA/`，正常关机完成后重新开机（无需拔电池）。[8 项功能和整包替换步骤](docs/releases/wlm-current-20261128.md) · [复建插件](docs/wlm-current-build.zh-CN.md)
 3. **机内使用。** 在设定菜单进入 Fenestra 激活，插件界面在并列的 **Z8Mouldes**。Cube LUT 入口在照片拍摄菜单。
 
 ## 历史版本 · LUT 预览 r2

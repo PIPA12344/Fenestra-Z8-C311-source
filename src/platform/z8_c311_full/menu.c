@@ -1684,6 +1684,30 @@ void fx_z8_menu_text(int32_t language,int32_t id,const uint16_t **text,uint32_t 
 
 extern uint64_t fx_z8_system_original(void *, uint32_t);
 extern uint64_t fx_z8_navigate_original(uint32_t);
+/* Stock C3.11 still image area (0x07000603) only has ISP/LV tables for
+ * FX(0), DX(1), 16:9(4) and 1:1(8). Custom plugin slots (2/3/6) persisted in
+ * NVRAM cause a black-screen watchdog boot loop whenever photo_tools is absent
+ * or not yet loaded. Clamp active and shooting banks A..D back to FX(0) during
+ * early boot before any native capsule is live. */
+static int boot_still_area_event(uint32_t event) {
+    return (event >= 1u && event <= 6u) || event == 17u || event == 18u || event == FX_Z8_STARTUP_EVENT;
+}
+static int capsules_live_for_boot_guard(State *s) {
+#ifdef FX_NATIVE_CAPSULES
+    return s && !fx_z8_capsule_pristine(&s->capsules);
+#else
+    (void)s;
+    return 0;
+#endif
+}
+static void sanitize_boot_still_area(void) {
+    for (uint32_t bank = 0u; bank < FX_Z8_STILL_AREA_BANKS; ++bank) {
+        uint32_t *slot = (uint32_t *)(uintptr_t)(FX_Z8_STILL_AREA_RAM + (uint64_t)bank * FX_Z8_STILL_AREA_BANK_STRIDE);
+        uint32_t value = __atomic_load_n(slot, __ATOMIC_ACQUIRE);
+        if (value > 8u || !((FX_Z8_STILL_AREA_STOCK_MASK >> value) & 1u))
+            __atomic_store_n(slot, 0u, __ATOMIC_RELEASE);
+    }
+}
 uint64_t fx_z8_menu_navigate(uint32_t page) {
     if(page>=FENESTRA && page<FX_NATIVE_EXTENSION_PAGE_LIMIT)
         return FN(FX_Z8_ADDR_403adbac,uint64_t (*)(uint32_t,uint32_t))(2u,page);
@@ -1692,6 +1716,8 @@ uint64_t fx_z8_menu_navigate(uint32_t page) {
 uint64_t fx_z8_system_dispatch(void *message, uint32_t sync) {
     uint32_t event = message ? *(const uint32_t *)((const uint8_t *)message + FX_Z8_MESSAGE_EVENT_OFFSET) : UINT32_MAX;
     State *s = owner();
+    int guard_still_area = boot_still_area_event(event) && !capsules_live_for_boot_guard(s);
+    if (guard_still_area) sanitize_boot_still_area();
     if(event==FX_Z8_STARTUP_EVENT)s=prepare();
     uint32_t sequence=s?atomic_fetch_add(&s->system_sequence,1u)+1u:0u;
     if(s && !sequence)sequence=atomic_fetch_add(&s->system_sequence,1u)+1u;
@@ -1709,6 +1735,7 @@ uint64_t fx_z8_system_dispatch(void *message, uint32_t sync) {
     }
     uint32_t stop_sequence=s?atomic_load(&s->stop_sequence):0u;
     uint64_t r = fx_z8_system_original(message, sync);
+    if (guard_still_area && !capsules_live_for_boot_guard(s)) sanitize_boot_still_area();
     /* Independently decoded C311 table: AppFirstStartComplete=19, NOT20. */
     if (event == FX_Z8_STARTUP_EVENT) {
         install(s);

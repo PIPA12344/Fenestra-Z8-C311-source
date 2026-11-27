@@ -134,6 +134,21 @@ def check_metadata(metas):
   if name in ('bridge','locale'):assert not any(n.startswith(('fx_suite_video_','fx_framing_','fx_photo_tools_')) for n in symbols)
  return True
 
+def check_framing_modes(h):
+ cases=[(6,1,6,rate,rate-3) for rate in range(4,7)]
+ cases.extend((6,1,4,rate,rate+4) for rate in range(7))
+ cases.extend(((6,0,6,4,0),(4,1,6,4,0),(6,1,6,3,0),(6,1,4,7,0),(6,1,5,4,0)))
+ initial_gets=h.stats['gets'];initial_sets=h.stats['sets']
+ for file_type,flag,size,rate,mode in cases:
+  h.u.mem_write(0xa03d5c014,struct.pack('<I',file_type))
+  h.u.mem_write(0xa03d5c02b,bytes((flag,)))
+  h.u.mem_write(0xa03d5c274,struct.pack('<III',size,0,rate))
+  assert h.op('framing',3)==0
+  caps,flags,nraw,desqueeze,active=struct.unpack('<5I',h.read(REPLY+56,20))
+  assert caps&8 and (flags>>8)&15==mode and active==int(mode!=0)
+ assert h.stats['gets']-initial_gets==len(cases) and h.stats['sets']==initial_sets
+ return len(cases)
+
 def check_mask(metas,mask):
  h=Harness(metas,mask);h.stage_all()
  for name in h.chosen:
@@ -149,6 +164,7 @@ def check_mask(metas,mask):
   elif name=='framing':assert h.op(name,3,1,struct.pack('<4I',1,16,0,1))==0
  assert h.stats['republishes']==int(bool(mask&2))+int(bool(mask&4))
  assert h.stats['gets']==int(bool(mask&1))*3+int(bool(mask&16))*3
+ framing_modes=check_framing_modes(h) if mask&1 and metas['framing'].get('suite')=='v051' else 0
  h.open_hook(0x12345678)
  for name in h.chosen:
   if name not in build.FEATURES:continue
@@ -176,7 +192,7 @@ def check_mask(metas,mask):
   assert h.event('photo_tools',2)==0 and not h.pending('photo_tools')
   assert h.op('photo_tools',2)==0 and h.event('photo_tools',4)==0
  return dict(mask=mask,components=h.chosen,providers=[PROVIDERS[n] for n in h.chosen if n in PROVIDERS],stats=h.stats,
-             passed=True,exact_hook_register_preservation=True,original_close_exactly_once_per_call=True)
+             passed=True,framing_mode_cases=framing_modes,exact_hook_register_preservation=True,original_close_exactly_once_per_call=True)
 
 def check_negatives(metas):
  results=[]
@@ -222,18 +238,109 @@ def check_negatives(metas):
  results.append(dict(case='bridge_allocation_and_alignment_fail_closed',passed=True))
  return results
 
+def check_v051_menu_routes(path):
+ from z8_native_capsule import decode
+ from z8_wlm_native_recipes import CONDITION_SITE,ICON_SITES,VIDEO_CODE,V051_VIDEO_CONFIG,V051_ROUTE_CODE
+ from z8_wlm_photo_v051 import HEIF_RX
+
+ directory=path.resolve();catalog=json.loads((directory/'catalog.json').read_text(encoding='utf-8'))
+ menu=next(c for c in catalog['components'] if c['id']=='shared.menu')
+ stock=(ROOT/'inputs/z8-c311-main.bin').read_bytes();base=0x40160000
+ results=[]
+ condition_body=(0x40967580, HEIF_RX+0x478)
+ quality_bodies=(0x40a41090,0x40a41150)
+ crop_bodies=(0x40b84000,0x40b84080)
+ for mask in range(1,32):
+  [variant]=[v for v in menu['variants'] if mask&v['mask']==v['value']]
+  capsule_bytes=(directory/variant['capsule']).read_bytes()
+  assert hashlib.sha256(capsule_bytes).hexdigest()==variant['sha256']
+  patches=decode(capsule_bytes)['patches']
+  addresses={p.address for p in patches}
+  uc=Uc(UC_ARCH_ARM64,UC_MODE_ARM)
+  for a in {0x100000,0x101000,0x102000,0x103000,0x41016000,VIDEO_CODE,V051_VIDEO_CONFIG,
+      *(a&~4095 for a in (CONDITION_SITE,*ICON_SITES,*condition_body,*quality_bodies,*crop_bodies))}:
+   uc.mem_map(a,4096)
+  for site in (CONDITION_SITE,*ICON_SITES):
+   uc.mem_write(site,stock[site-base:site-base+4])
+  for p in patches:
+   if p.address in (CONDITION_SITE,*ICON_SITES,V051_VIDEO_CONFIG) or VIDEO_CODE<=p.address<VIDEO_CODE+4096:
+    uc.mem_write(p.address,p.new)
+  cases=[]
+  for condition in (0x0e2e3a32,0x39,0x44,0x28):
+   framing=bool(mask&1);still=bool(mask&16)
+   target=condition_body[0] if framing and (not still or condition==0x0e2e3a32) else condition_body[1] if still else CONDITION_SITE+4
+   cases.append((CONDITION_SITE,condition,target,framing or still))
+  for index,site in enumerate(ICON_SITES):
+   for icon in (0x1173,0x7000,0x7100,0x7103,0x710f,0x7110,0x7115,0x7116):
+    quality=bool(mask&6);crop=bool(mask&16)
+    target=crop_bodies[index] if crop and (not quality or 0x7110<=icon<=0x7115) else quality_bodies[index] if quality else site+4
+    cases.append((site,icon,target,quality or crop))
+  for site,value,target,hooked in cases:
+   assert (site in addresses)==hooked
+   uc.mem_write(0x100000,struct.pack('<I',value))
+   arg0=0x100000 if site==ICON_SITES[0] else value
+   for reg,arg in zip(REGS,(arg0,0x100100,0x100200)):
+    uc.reg_write(reg,arg)
+   uc.reg_write(UC_ARM64_REG_SP,0x103ff0)
+   uc.emu_start(site,target,count=20)
+   assert uc.reg_read(UC_ARM64_REG_PC)==target,(hex(mask),hex(site),hex(value),hex(target))
+   assert tuple(uc.reg_read(reg) for reg in REGS[:3])==(arg0,0x100100,0x100200)
+   if target==CONDITION_SITE+4:
+    assert uc.reg_read(UC_ARM64_REG_SP)==0x103fb0
+   elif target==ICON_SITES[0]+4:
+    assert uc.reg_read(UC_ARM64_REG_X9)==0xcd58
+   elif target==ICON_SITES[1]+4:
+    assert uc.reg_read(UC_ARM64_REG_X8)==0xcd58
+  source=bytes(range(0x30,0x40));before=bytes([0xa5])*16
+  bank_cases=0
+  if mask&15:
+   for item in (0x120b,0x122c,0x1238,0x1257,0x9999):
+    uc.mem_write(0x100000,source);uc.mem_write(0x100100,before)
+    uc.reg_write(UC_ARM64_REG_SP,0x103000);uc.mem_write(0x103000,struct.pack('<QQ',0x100100,0x100000))
+    uc.reg_write(UC_ARM64_REG_X20,0xfeed0000|item)
+    uc.reg_write(UC_ARM64_REG_X12,0x123456789abcdef0);uc.reg_write(UC_ARM64_REG_X13,0x1fedcba987654321)
+    uc.emu_start(VIDEO_CODE,0x410162f0,count=100)
+    expected=bytearray(before)
+    if item==0x120b:
+     if mask&2:expected[1]=source[1]
+     if mask&1:expected[3]=source[3]
+    elif item==0x122c and mask&1:expected[1:4]=source[1:4]
+    elif item==0x1238 and mask&8:expected[1]=source[1]
+    elif item==0x1257 and mask&4:expected[1]=source[1]
+    assert uc.reg_read(UC_ARM64_REG_PC)==0x410162f0
+    assert bytes(uc.mem_read(0x100100,16))==bytes(expected),(hex(mask),hex(item))
+    assert uc.reg_read(UC_ARM64_REG_SP)==0x103000
+    assert uc.reg_read(UC_ARM64_REG_X12)==0x123456789abcdef0
+    assert uc.reg_read(UC_ARM64_REG_X13)==0x1fedcba987654321
+    bank_cases+=1
+  joint_targets=[]
+  for a in (V051_ROUTE_CODE,V051_ROUTE_CODE+0x40,V051_ROUTE_CODE+0x80):
+   if any(p.address<=a and a+4<=p.address+len(p.new) and any(p.new[a-p.address:a-p.address+4]) for p in patches):
+    joint_targets.append(hex(a))
+  results.append(dict(mask=mask,route_cases=len(cases),bank_cases=bank_cases,joint_targets=joint_targets))
+ return results
+
 def main():
- ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--out',type=Path,required=True);ap.add_argument('--skip-build',action='store_true');args=ap.parse_args();out=args.out.resolve();out.mkdir(parents=True,exist_ok=True)
- if not args.skip_build:subprocess.run([sys.executable,str(ROOT/'nativepacks/wlm_controls/build.py'),'--component','all','--out',str(out/'components')],cwd=ROOT,check=True,capture_output=True,text=True,timeout=90)
+ ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--out',type=Path,required=True);ap.add_argument('--skip-build',action='store_true')
+ ap.add_argument('--suite',choices=('legacy','v051'),default='legacy');ap.add_argument('--recipe-catalog',type=Path)
+ args=ap.parse_args();out=args.out.resolve();out.mkdir(parents=True,exist_ok=True)
+ if not args.skip_build:subprocess.run([sys.executable,str(ROOT/'nativepacks/wlm_controls/build.py'),'--suite',args.suite,'--component','all','--out',str(out/'components')],cwd=ROOT,check=True,capture_output=True,text=True,timeout=90)
  sys.path.insert(0,str(ROOT/'host'));from z8_native_capsule import pinned_native_text_layout
- locale=pinned_native_text_layout(15)
- if not args.skip_build:subprocess.run([sys.executable,str(ROOT/'nativepacks/wlm_controls/build.py'),'--component','locale','--out',str(out/'components/locale'),'--text-count',str(locale['text_count']),'--languages',str(locale['languages']),'--offsets-directory',hex(locale['offsets_directory']),'--pools-directory',hex(locale['pools_directory'])],cwd=ROOT,check=True,capture_output=True,text=True,timeout=60)
+ layout=pinned_native_text_layout(15)
+ locale={key:layout[key] for key in ('languages','text_count','offsets_directory','pools_directory')}
+ if args.suite=='v051':
+  from z8_wlm_native_recipes import V051_LOCALE
+  locale=V051_LOCALE
+ if not args.skip_build:subprocess.run([sys.executable,str(ROOT/'nativepacks/wlm_controls/build.py'),'--suite',args.suite,'--component','locale','--out',str(out/'components/locale'),'--text-count',str(locale['text_count']),'--languages',str(locale['languages']),'--offsets-directory',hex(locale['offsets_directory']),'--pools-directory',hex(locale['pools_directory'])],cwd=ROOT,check=True,capture_output=True,text=True,timeout=60)
  metas={name:json.loads((out/'components'/name/'controls.json').read_text(encoding='utf-8')) for name in build.BASES};assert check_metadata(metas)
+ assert all(m.get('suite','legacy')==args.suite for m in metas.values())
+ assert metas['locale']['locale_descriptor']==locale
  masks=[]
  for mask in range(1,32):masks.append(check_mask(metas,mask));print(json.dumps(dict(mask=mask,passed=True)),flush=True)
  negatives=check_negatives(metas)
+ menu_routes=check_v051_menu_routes(args.recipe_catalog) if args.recipe_catalog else []
  sources={str(p.relative_to(ROOT)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest() for p in [*ROOT.glob('nativepacks/wlm_controls/*.c'),*ROOT.glob('nativepacks/wlm_controls/*.h'),*ROOT.glob('nativepacks/wlm_controls/*.S'),*ROOT.glob('nativepacks/wlm_controls/*.ld'),ROOT/'nativepacks/wlm_controls/build.py',Path(__file__)]}
- result=dict(schema=1,passed=True,arm_masks=masks,negative_cases=negatives,source_sha256=sources,components={n:dict(elf_sha256=m['elf_sha256'],entry=m['entry'],features5=m['features5']) for n,m in metas.items()},
+ result=dict(schema=1,passed=True,arm_masks=masks,negative_cases=negatives,menu_routes=menu_routes,source_sha256=sources,components={n:dict(elf_sha256=m['elf_sha256'],entry=m['entry'],features5=m['features5']) for n,m in metas.items()},
              no_camera=True,original_functions='synthetic GUI/RTOS/native MOV body; actual independent pack callbacks and hook assembly',
              limitations=['Unicorn is not full-system QEMU or a physical camera','No original recording, codec, media, DMA/cache/SMP or sensor qualification'])
  (out/'checks.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8');print(json.dumps(dict(passed=True,masks=len(masks),negative_cases=len(negatives),report=str(out/'checks.json'))))

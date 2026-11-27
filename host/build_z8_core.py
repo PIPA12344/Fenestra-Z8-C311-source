@@ -223,6 +223,26 @@ def system_events(original):
             'record_bytes': 88, 'message_id_offset': 32, 'source': 'unique original system-event names/table'}
 
 
+def still_area_guard(original):
+    """Independently verify C3.11 still image area (0x07000603) RAM and 4 shooting banks."""
+    from z8_ui_profile import INIT_FILE, INIT_RAM, INIT_BYTES
+    descriptor_va, ram_va, default_va = 0x4400BBE0, 0xA03D482C4, 0x4402E4EC
+    bank_table_va, stride, banks = 0xA0294A690, 0x2E0, 5
+    type_size, ram, default_ptr = struct.unpack_from('<3Q', original, descriptor_va - BASE)
+    default_val, = struct.unpack_from('<I', original, default_va - BASE)
+    if (type_size, ram, default_ptr, default_val) != (0x400000009, ram_va, default_va, 0):
+        raise ValueError('original Z8 still image area descriptor (0x07000603) differs')
+    bank_off = INIT_FILE + (bank_table_va - INIT_RAM)
+    if not (INIT_FILE <= bank_off and bank_off + 8 * banks <= INIT_FILE + INIT_BYTES):
+        raise ValueError('still image area bank table outside initialized RAM')
+    expected_banks = tuple(ram_va + i * stride for i in range(banks))
+    if struct.unpack_from(f'<{banks}Q', original, bank_off) != expected_banks:
+        raise ValueError('original Z8 still image area bank pointers differ')
+    return {'property': '0x07000603', 'descriptor': hex(descriptor_va), 'bank_table': hex(bank_table_va),
+            'ram': hex(ram_va), 'stride': stride, 'banks': banks, 'stock_mask': 0x113,
+            'source': 'original C3.11 Data Store descriptor and 5-bank pointer table'}
+
+
 def build(firmware, output, *, correspondence=None, ui_profile=None, llvm_bin=None, prores=False, feature_suite=False, native_capsules=False):
     profile, original = load(TARGET, firmware)
     if len(original) != MAIN_BYTES or sha(original) != MAIN_SHA256:
@@ -241,6 +261,7 @@ def build(firmware, output, *, correspondence=None, ui_profile=None, llvm_bin=No
         if old in addresses and key not in ui['address_map'] and addresses[old] != number(record['address']):
             raise ValueError('core and named binding manifests disagree: '+key)
     events = system_events(original)
+    area_guard = still_area_guard(original)
     out = Path(output).resolve()
     if not out.is_relative_to(ROOT/'build') or out.exists():
         raise ValueError('new owned build output directory required')
@@ -331,6 +352,10 @@ def build(firmware, output, *, correspondence=None, ui_profile=None, llvm_bin=No
               '#define FX_Z8_CARD_MOUNT_EVENT '+str(events['card_mount'])+'u',
               '#define FX_Z8_SHUTDOWN_CANCEL_EVENT '+str(events['shutdown_cancel'])+'u',
               '#define FX_Z8_POWER_ON_EVENT '+str(events['power_on'])+'u',
+              '#define FX_Z8_STILL_AREA_RAM UINT64_C('+area_guard['ram']+')',
+              '#define FX_Z8_STILL_AREA_BANK_STRIDE '+hex(area_guard['stride'])+'u',
+              '#define FX_Z8_STILL_AREA_BANKS '+str(area_guard['banks'])+'u',
+              '#define FX_Z8_STILL_AREA_STOCK_MASK '+hex(area_guard['stock_mask'])+'u',
               '#define FX_Z8_APPLICATION_IDENTITY {'+','.join(map(str,bytes.fromhex(MAIN_SHA256)))+'}']
     for old in sorted(addresses):
         header.append('#define FX_Z8_ADDR_'+format(old, 'x')+' '+hex(addresses[old]))
@@ -428,7 +453,7 @@ def build(firmware, output, *, correspondence=None, ui_profile=None, llvm_bin=No
         'boot_prefix_unchanged': True, 'original_reconstruction_equal': True, 'original_mmu_unchanged': True,
         'activated': False, 'qemu_qualified': False, 'physical_qualified': False, 'flashable': False,
         'navigation_hook_version': 1, 'ui_dispatch_hook_version': 1, 'font_scope_hook_version': 2, 'ptp_hook_version': 1, 'rtos_hook_version': 1,
-        'ptp_capabilities': 355, 'system_events': events, 'native_namespace': ui_checks['checks'][1],
+        'ptp_capabilities': 355, 'system_events': events, 'still_area_guard': area_guard, 'native_namespace': ui_checks['checks'][1],
         'debug_build_identity': identity.hex(), 'debug_identity_scheme': 2, 'debug_identity_configuration': identity_config,
         'debug_identity_header': identity_header, 'debug_identity_rebuilt': identity_rebuilt, 'compiler_dependencies': graph, 'commands': commands,
         'source_sha256': {name: sha((ROOT/name).read_bytes()) for name in sorted(set(all_inputs))},

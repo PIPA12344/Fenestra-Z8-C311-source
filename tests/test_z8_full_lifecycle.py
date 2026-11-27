@@ -101,6 +101,9 @@ class FullMachine(BaseMachine):
             address = number(record['address'])
             if 0xa00000000 <= address < 0xa40000000:
                 self.map(address, 4096)
+        guard = self.report.get('still_area_guard')
+        if guard:
+            self.map(number(guard['ram']), guard['stride'] * guard['banks'] + 4)
         ram_begin = 0xa00000000
         self.page_root = self.ui['native_pages']['page_zero']; self.page = self.page_root+self.ui['setup']['id']*96
         self.page_before = self.read(self.page,96)
@@ -413,6 +416,57 @@ class FullLifecycleTests(unittest.TestCase):
         self.assertEqual(m.records['B:\\FENESTRA\\boot-z8.flag'],bytes(flag))
 
 
+    def test_sd_module_stage_reads_actual_hello_package_from_b(self):
+        m=self.storage_machine(directories={'B:\\FENESTRA'});m.worker_once()
+        package=(ROOT/'build/z8-full-dev2-review/card/FENESTRA/hello.wlm').read_bytes()
+        base=0xa30000000;m.map(base,0x50000);m.write(base,bytes(0x50000))
+        native,logical,digest,buffer,image=base+0x10000,base+0x10100,base+0x10200,base+0x20000,base+0x30000
+        m.write(native,b'B:\\FENESTRA\\hello.wlm\0');m.write(logical,b'FENESTRA/hello.wlm\0')
+        m.write(digest,hashlib.sha256(package).digest())
+        m.records['B:\\FENESTRA\\hello.wlm']=package
+        # AAPCS64 arguments 9..13 go on the stack; registers carry the first 8.
+        m.write(m.stack+0x1f000,struct.pack('<5Q',buffer,len(package),image,0x10000,1))
+        for index,value in enumerate((0x7f0000,buffer,len(package)+1),5):
+            m.uc.reg_write(UC_ARM64_REG_X0+index,value)
+        result=m.call('fx_z8_module_stage',base,native,logical,len(package),digest)
+        self.assertEqual(result,0)
+        self.assertIn('B:\\FENESTRA\\hello.wlm',m.file_opens)
+        self.assertTrue(all(p.startswith('B:\\FENESTRA\\') for p in m.file_opens))
+        self.assertFalse(m.file_handles)
+
+    def test_sd_module_stage_rejects_cross_volume_path_before_io(self):
+        m=self.storage_machine(directories={'B:\\FENESTRA'});m.worker_once()
+        package=(ROOT/'build/z8-full-dev2-review/card/FENESTRA/hello.wlm').read_bytes()
+        base=0xa30000000;m.map(base,0x50000);m.write(base,bytes(0x50000))
+        native,logical,digest,buffer,image=base+0x10000,base+0x10100,base+0x10200,base+0x20000,base+0x30000
+        m.write(native,b'A:\\FENESTRA\\hello.wlm\0');m.write(logical,b'FENESTRA/hello.wlm\0')
+        m.write(digest,hashlib.sha256(package).digest())
+        before=list(m.file_opens)
+        m.write(m.stack+0x1f000,struct.pack('<5Q',buffer,len(package),image,0x10000,1))
+        for index,value in enumerate((0x7f0000,buffer,len(package)+1),5):
+            m.uc.reg_write(UC_ARM64_REG_X0+index,value)
+        result=m.call('fx_z8_module_stage',base,native,logical,len(package),digest)
+        self.assertEqual(result,1) # FX_ARGUMENT, before any native file access.
+        self.assertEqual(m.file_opens,before)
+
+    def raw_event(self,m,event):
+        m.set_u32(m.message+m.profile['events']['message_id_offset'],event)
+        return m.call('fx_z8_system_dispatch',m.message,0)
+
+    def clean_stop(self,m):
+        m.event('shutdown')
+        # Native scheduler and cleanup-window timing remain explicitly modeled.
+        cleanup=m.owner()+m.metadata['shutdown_done_offset']-4
+        m.set_u32(cleanup,1);m.worker_once();m.set_u32(cleanup,0)
+        self.assertEqual(m.field('shutdown_done'),1)
+
+    def resume_layout(self,m):
+        if 'fx_z8_resume_metadata' not in m.symbols:
+            self.skipTest('resume candidate required')
+        fields=struct.unpack('<6I',m.read(m.symbols['fx_z8_resume_metadata'],24))
+        self.assertEqual(fields[:2],(0x46585238,1))
+        return [m.owner()+v for v in fields[2:]]
+
     def test_resume_auto_off_returns_ready_and_manual_activation_works(self):
         m=self.storage_machine(directories={'B:\\FENESTRA'},writable=True);m.worker_once()
         request,count,last,generation=self.resume_layout(m)
@@ -720,6 +774,40 @@ class FullLifecycleTests(unittest.TestCase):
         self.assertEqual((m.u32(phase),m.u32(retries),m.field('shutdown')),(7,4,3))
         self.assertEqual(self.core_status_text(m),'Card error E0D B7')
         self.assertEqual(m.create_calls,1)
+
+    def test_boot_still_area_clamps_custom_slots_before_capsules_live(self):
+        m=FullMachine()
+        guard=m.report.get('still_area_guard')
+        if not guard:self.skipTest('still_area_guard not present in build')
+        base,stride,banks=number(guard['ram']),guard['stride'],guard['banks']
+        slots=[base+i*stride for i in range(banks)]
+        # 1. Early boot events clamp plugin/out-of-range values across active + Banks A..D to FX(0).
+        for slot,val in zip(slots,(2,3,6,5,99)):m.set_u32(slot,val)
+        self.raw_event(m,4) # eSyscCommandId_StartTask1st
+        self.assertEqual([m.u32(slot) for slot in slots],[0,0,0,0,0])
+        # 2. Values loaded from NVRAM inside fx_z8_system_original are clamped immediately after return,
+        #    while stock values {0,1,4,8} are preserved untouched.
+        def simulate_ds_load(_event):
+            for slot,val in zip(slots,(2,1,3,8,6)):m.set_u32(slot,val)
+        m.original_action=simulate_ds_load
+        self.raw_event(m,5) # eSyscCommandId_Initialize2nd
+        m.original_action=None
+        self.assertEqual([m.u32(slot) for slot in slots],[0,1,0,8,0])
+        # 3. Stock values survive AppFirstStartComplete intact.
+        for slot,val in zip(slots,(4,1,8,0,4)):m.set_u32(slot,val)
+        m.event('startup_complete')
+        self.assertEqual([m.u32(slot) for slot in slots],[4,1,8,0,4])
+        # 4. Once native capsules are non-pristine (live), later system events do not clobber custom crops.
+        if m.native_capsules:
+            cap_meta=struct.unpack('<8I',m.read(m.symbols['fx_native_capsule_metadata'],32))
+            present_addr=m.owner()+cap_meta[2]+cap_meta[7]
+            m.set_u32(present_addr-20,1) # boot_attempted
+            m.set_u32(present_addr-8,1)  # prepared
+            m.set_u32(present_addr,1)    # present
+            for slot,val in zip(slots,(2,3,6,8,1)):m.set_u32(slot,val)
+            self.raw_event(m,m.report['system_events']['card_mount'])
+            self.raw_event(m,m.report['system_events']['startup'])
+            self.assertEqual([m.u32(slot) for slot in slots],[2,3,6,8,1])
 
 def main():
     result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(FullLifecycleTests))

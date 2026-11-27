@@ -1,4 +1,4 @@
-# 复建 2026-11-26 插件整合包
+# 复建 2026-11-28 插件整合包
 
 使用这个 Release 的源码标签、Python 3.11+ 和 Windows x64 LLVM 19.1.5。准备以下本地输入。
 
@@ -26,7 +26,7 @@ python -B host/build_z8_photo_menu.py --stock $stock --foundation $foundation --
 
 python -B nativepacks/wlm_controls/build.py --component all --suite v051 --llvm $llvm --out "$work/controls"
 python -B nativepacks/wlm_controls/build.py --component locale --suite v051 --llvm $llvm --out "$work/controls/locale"
-python -B host/build_wlm_native_components.py --suite v051 --stock $stock --foundation $foundation --photo $photo --controls "$work/controls" --out "$work/catalog" --no-coalesce-records --peer-wlms "$work/cube/cube_lut.wlm" "$work/portrait/portrait_video.wlm" "$work/wav/card_wav.wlm"
+python -B host/build_wlm_native_components.py --suite v051 --stock $stock --foundation $foundation --photo $photo --controls "$work/controls" --out "$work/catalog" --coalesce-records --peer-wlms "$work/cube/cube_lut.wlm" "$work/portrait/portrait_video.wlm" "$work/wav/card_wav.wlm"
 python -B host/package_wlm_native_components.py --catalog "$work/catalog" --out "$work/components"
 
 $ids = 'framing', 'prores', 'h265', 'log_colour', 'photo_tools'
@@ -37,14 +37,29 @@ $frontends = foreach ($id in $ids) {
     (Get-Content "$out/module.json" -Raw | ConvertFrom-Json).modules[0]
 }
 @{frontends = @($frontends)} | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 "$work/frontend-set/artifact-catalog.json"
-python -B host/package_z8_wlm_plugins.py --components "$work/components" --frontends "$work/frontend-set" --output "$work/unmerged"
+python -B host/package_z8_wlm_plugins.py --components "$work/components" --frontends "$work/frontend-set" --output "$work/plugins"
 
-foreach ($id in $ids) {
-    python -B host/repack_wlm_records.py "$work/unmerged/FENESTRA/$id.wlm" "$work/final/FENESTRA/$id.wlm"
-}
+New-Item -ItemType Directory -Force "$work/final/FENESTRA" | Out-Null
+Copy-Item "$work/plugins/FENESTRA/*.wlm" "$work/final/FENESTRA/"
 python -B host/repack_wlm_records.py "$work/wav/card_wav.wlm" "$work/final/FENESTRA/card_wav.wlm"
-Copy-Item "$work/cube/cube_lut.wlm", "$work/portrait/portrait_video.wlm" "$work/final/FENESTRA/"
+python -B host/repack_wlm_records.py "$work/cube/cube_lut.wlm" "$work/final/FENESTRA/cube_lut.wlm"
+Copy-Item "$work/portrait/portrait_video.wlm" "$work/final/FENESTRA/"
 Get-ChildItem "$work/final/FENESTRA/*.wlm" | Get-FileHash -Algorithm SHA256
 ```
 
-对照发布 ZIP 内的 `SHA256SUMS.txt` 校验 8 个输出。整组发布使用上述打包后的记录合并步骤。查看[功能和安装说明](releases/wlm-current-20261126.md)。
+对照发布 ZIP 内的 `SHA256SUMS.txt` 校验 8 个输出。五件套在生成原生胶囊时使用 `--coalesce-records`，再直接打包；不要沿用上一版的 `--no-coalesce-records` 加事后合并流程，否则语义相同的记录也可能产生不同的包身份。Cube LUT 与 WAV 在打包后分别合并记录。查看[功能和安装说明](releases/wlm-current-20261128.md)。
+
+## 离线校验
+
+```powershell
+python -B scripts/verify_wlm_release.py --wlms "$work/final/FENESTRA" --manifest docs/releases/wlm-current-20261128-manifest.json --output "$work/verify" --foundation $foundation
+python -B -m pytest -p no:faulthandler -p no:cacheprovider tests/test_photo_crop_shutdown.py tests/test_z8_lut_release.py tests/test_wlm_native.py
+```
+
+裁切回归默认读取 `build/release-20261128/controls`；使用其他目录时，先设置 `$env:FX_WLM_CONTROLS = "$work/controls"`。测试执行编译后的插件指令，Data Store 与 GUI/RTOS 边界由合成夹具提供，不连接相机。
+
+[本次离线结果](releases/wlm-current-20261128-verification.json)：8 包生产 C/Python 组合逐字节一致，900 条原生记录、695 个记录目标页（另有加载器自身的撤销页），五件套与配套插件的 IMAGE 页交集为 0；first-fit/best-fit 冷扫描、组合和封存均通过。原厂 MAIN 可映射的前像逐一核对，其余动态根仅允许构建器明确列出的 bootstrap 根。
+
+本标签也提交了下一版底座的早期启动裁切钳位源码。本次只复建和发布 WLM；复建兼容底座仍使用固定 `cold-retry3-source` 标签，不能把本标签构建出的新核心称为现行 cold-retry3。
+
+[上一版复建说明](wlm-build-20261126.zh-CN.md)保持为历史记录。
